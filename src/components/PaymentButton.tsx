@@ -10,7 +10,8 @@ declare global {
   }
 }
 
-// We define the exact shape of the response object to satisfy TypeScript
+// THIS IS THE FIX: We are defining the exact shape of the response object.
+// This tells the "strict teacher" exactly what to expect. No more "any".
 interface RazorpayResponse {
   razorpay_payment_id: string;
   razorpay_order_id: string;
@@ -42,7 +43,7 @@ export function PaymentButton() {
           name: "JyotAI Divine Reading",
           description: "Instant Vedic Insight",
           order_id: order.id,
-          // The handler now uses our specific RazorpayResponse type
+          // The handler now uses our specific, correct RazorpayResponse type
           handler: function (response: RazorpayResponse) {
             alert(`Payment Successful! Payment ID: ${response.razorpay_payment_id}`);
           },
