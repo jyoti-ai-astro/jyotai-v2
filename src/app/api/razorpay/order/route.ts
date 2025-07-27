@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { adminDb, adminAuth } from '@/lib/firebase'; // We need the base admin object for FieldValue
+import { adminDb, adminAuth } from '@/lib/firebase-admin'; // ✅ FIXED IMPORT
 import { Resend } from 'resend';
 import { randomBytes } from 'crypto';
-import admin from 'firebase-admin'; // Import the base admin SDK
+import admin from 'firebase-admin';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -17,7 +17,7 @@ export async function POST(req: Request) {
     if (userQuery.empty) {
       const newUserRef = await usersRef.add({
         email: userEmail,
-        name: name,
+        name,
         plan: 'standard',
         createdAt: new Date().toISOString(),
         credits: 3,
@@ -37,15 +37,11 @@ export async function POST(req: Request) {
       createdAt: new Date().toISOString(),
     });
 
-    // --- THIS IS THE REAL FIX ---
-    // The 'FieldValue' class lives on the main 'admin.firestore' object.
     await adminDb.collection('users').doc(userId).update({
-      credits: admin.firestore.FieldValue.increment(-1)
+      credits: admin.firestore.FieldValue.increment(-1),
     });
-    // --- END OF THE REAL FIX ---
 
-    console.log(`Prediction saved for user ${userId}. A magic link would be sent to ${userEmail}.`);
-
+    console.log(`Prediction saved for user ${userId}.`);
     return NextResponse.json({ success: true, userId });
 
   } catch (error) {
