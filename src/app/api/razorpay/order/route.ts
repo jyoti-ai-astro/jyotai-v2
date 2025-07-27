@@ -1,10 +1,12 @@
+// src/app/api/razorpay/order/route.ts
+
 import { NextResponse } from "next/server";
 import { razorpay } from "@/lib/razorpay";
 import { randomBytes } from "crypto";
 
-export async function POST(req: Request) {
+// We have removed the unused 'req' parameter.
+export async function POST() {
   try {
-    // For now, we are using a fixed amount. Later, this can be dynamic.
     const amount = 49900; // Amount in paise (₹499.00)
     const currency = "INR";
     
