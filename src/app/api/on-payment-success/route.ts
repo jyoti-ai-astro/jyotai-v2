@@ -74,7 +74,7 @@ export async function POST(req: Request) {
     if (resend) {
       try {
         await resend.emails.send({
-          from: 'no-reply@jyotai.app',
+          from: 'Brahmin GPT <oracle@jyotai.app>', // ✅ Corrected verified sender
           to: normalizedEmail,
           subject: '🔮 Your Divine Reading from JyotAI is Ready',
           html: `
@@ -85,9 +85,9 @@ export async function POST(req: Request) {
             <p><strong>Brahmin GPT</strong></p>
           `,
         });
-        console.log(`Magic Link email sent successfully to ${normalizedEmail}.`);
+        console.log(`✅ Magic Link email sent to ${normalizedEmail}`);
       } catch (emailError) {
-        console.error('Failed to send Magic Link email:', emailError);
+        console.error('❌ Failed to send Magic Link email:', emailError);
       }
     } else {
       console.warn('RESEND_API_KEY not set. Skipping email send.');
@@ -95,7 +95,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, userId, predictionId });
   } catch (error) {
-    console.error('Error in on-payment-success:', error);
+    console.error('❌ Error in on-payment-success:', error);
     return NextResponse.json(
       { success: false, error: 'Internal Server Error' },
       { status: 500 }
