@@ -6,7 +6,7 @@ import { PaymentButton } from "./PaymentButton";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 
-type FormStep = "NAME" | "DOB" | "QUERY" | "REFLECTION" | "CONVERGENCE";
+type FormStep = "NAME" | "DOB" | "QUERY" | "EMAIL" | "REFLECTION" | "CONVERGENCE";
 
 export function OfferingForm() {
   const [step, setStep] = useState<FormStep>("NAME");
@@ -15,6 +15,7 @@ export function OfferingForm() {
     name: "",
     dob: new Date(),
     query: "",
+    email: "",
   });
 
   const nextStep = () => {
@@ -28,6 +29,10 @@ export function OfferingForm() {
         break;
       case "QUERY":
         if (!userData.query) return alert("Enter your divine question.");
+        setStep("EMAIL");
+        break;
+      case "EMAIL":
+        if (!userData.email.includes('@')) return alert("Please enter a valid email.");
         setStep("REFLECTION");
         break;
       case "REFLECTION":
@@ -88,7 +93,7 @@ export function OfferingForm() {
             </button>
           </motion.div>
         )}
-        
+
         {step === "QUERY" && (
           <motion.div key="query" {...cardVariants} className="space-y-6">
             <h2 className="text-3xl text-white" style={{ fontFamily: "'Marcellus', serif" }}>
@@ -110,14 +115,33 @@ export function OfferingForm() {
           </motion.div>
         )}
 
+        {step === "EMAIL" && (
+          <motion.div key="email" {...cardVariants} className="space-y-6">
+            <h2 className="text-3xl text-white" style={{ fontFamily: "'Marcellus', serif" }}>
+              Where shall the cosmos send your sacred history?
+            </h2>
+            <input
+              type="email"
+              value={userData.email}
+              onChange={(e) => setUserData({ ...userData, email: e.target.value })}
+              className="w-full p-4 bg-gray-800 border border-gray-700 rounded-md focus:ring-2 focus:ring-yellow-400 focus:outline-none"
+              placeholder="Your Email Address"
+            />
+            <button
+              onClick={nextStep}
+              className="w-full font-bold py-3 px-8 rounded-lg bg-yellow-400 text-black hover:bg-yellow-300 transition"
+            >
+              Next →
+            </button>
+          </motion.div>
+        )}
+
         {step === "REFLECTION" && (
           <motion.div key="reflection" {...cardVariants} className="space-y-6 text-center">
             <h2 className="text-3xl text-white" style={{ fontFamily: "'Marcellus', serif" }}>
               The cosmos acknowledges your request.
             </h2>
-            <p className="text-gray-300">
-              Your offering has been recorded in the astral library.
-            </p>
+            <p className="text-gray-300">Your offering has been recorded in the astral library.</p>
             <button
               onClick={nextStep}
               className="w-full font-bold py-3 px-8 rounded-lg bg-yellow-400 text-black hover:bg-yellow-300 transition"
@@ -132,10 +156,11 @@ export function OfferingForm() {
             <h2 className="text-3xl text-white" style={{ fontFamily: "'Marcellus', serif" }}>
               Make your offering to unlock divine wisdom.
             </h2>
-            <PaymentButton 
+            <PaymentButton
               name={userData.name}
               dob={userData.dob.toISOString()}
               query={userData.query}
+              email={userData.email}
             />
           </motion.div>
         )}
