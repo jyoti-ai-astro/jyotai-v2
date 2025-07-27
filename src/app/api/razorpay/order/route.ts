@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebase';
+import { adminDb, adminAuth } from '@/lib/firebase'; // We need the base admin object for FieldValue
 import { Resend } from 'resend';
 import { randomBytes } from 'crypto';
+import admin from 'firebase-admin'; // Import the base admin SDK
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -9,27 +10,23 @@ export async function POST(req: Request) {
   try {
     const { userEmail, paymentId, orderId, name, dob, query, prediction } = await req.json();
 
-    // 1. Find or Create User in Firestore
     const usersRef = adminDb.collection('users');
     const userQuery = await usersRef.where('email', '==', userEmail).limit(1).get();
     
     let userId: string;
     if (userQuery.empty) {
-      // Create new user
       const newUserRef = await usersRef.add({
         email: userEmail,
         name: name,
-        plan: 'standard', // All new users start as standard
+        plan: 'standard',
         createdAt: new Date().toISOString(),
-        credits: 3, // Standard plan starts with 3 credits
+        credits: 3,
       });
       userId = newUserRef.id;
     } else {
-      // User exists
       userId = userQuery.docs[0].id;
     }
 
-    // 2. Save the Prediction
     const predictionId = `pred_${randomBytes(12).toString('hex')}`;
     await adminDb.collection('users').doc(userId).collection('predictions').doc(predictionId).set({
       query,
@@ -40,13 +37,13 @@ export async function POST(req: Request) {
       createdAt: new Date().toISOString(),
     });
 
-    // 3. Decrement user credits
+    // --- THIS IS THE REAL FIX ---
+    // The 'FieldValue' class lives on the main 'admin.firestore' object.
     await adminDb.collection('users').doc(userId).update({
       credits: admin.firestore.FieldValue.increment(-1)
     });
+    // --- END OF THE REAL FIX ---
 
-    // 4. Send the Magic Link Email (for now, we just confirm success)
-    // We will build the full login flow in the next step.
     console.log(`Prediction saved for user ${userId}. A magic link would be sent to ${userEmail}.`);
 
     return NextResponse.json({ success: true, userId });
