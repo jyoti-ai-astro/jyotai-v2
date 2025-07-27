@@ -1,11 +1,10 @@
-// src/app/api/on-payment-success/route.ts
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
 import admin from 'firebase-admin';
 import { Resend } from 'resend';
 import { randomBytes } from 'crypto';
 
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+const resend = new Resend(process.env.RESEND_API_KEY!); // Ensure it's not undefined
 
 type Body = {
   userEmail: string;
@@ -31,7 +30,7 @@ export async function POST(req: Request) {
 
     const normalizedEmail = userEmail.trim().toLowerCase();
 
-    // 1) Upsert user
+    // 1. Upsert User
     const usersRef = adminDb.collection('users');
     const userQuery = await usersRef.where('email', '==', normalizedEmail).limit(1).get();
 
@@ -49,7 +48,7 @@ export async function POST(req: Request) {
       userId = userQuery.docs[0].id;
     }
 
-    // 2) Save prediction
+    // 2. Save Prediction
     const predictionId = `pred_${randomBytes(12).toString('hex')}`;
     await adminDb
       .collection('users')
@@ -65,33 +64,28 @@ export async function POST(req: Request) {
         createdAt: new Date().toISOString(),
       });
 
-    // 3) Decrement credits
+    // 3. Decrement Credits
     await adminDb.collection('users').doc(userId).update({
       credits: admin.firestore.FieldValue.increment(-1),
     });
 
-    // 4) Send email (best-effort)
-    if (resend) {
-      try {
-        await resend.emails.send({
-          from: 'Brahmin GPT <oracle@jyotai.app>', // ✅ Corrected verified sender
-          to: normalizedEmail,
-          subject: '🔮 Your Divine Reading from JyotAI is Ready',
-          html: `
-            <h1>Greetings, Seeker ${name},</h1>
-            <p>The cosmos has spoken. Your divine prediction has been recorded in our sacred archives.</p>
-            <p>You can return to your history of readings at any time by visiting your personal portal.</p>
-            <p>With divine blessings,</p>
-            <p><strong>Brahmin GPT</strong></p>
-          `,
-        });
-        console.log(`✅ Magic Link email sent to ${normalizedEmail}`);
-      } catch (emailError) {
-        console.error('❌ Failed to send Magic Link email:', emailError);
-      }
-    } else {
-      console.warn('RESEND_API_KEY not set. Skipping email send.');
-    }
+    // 4. Send Email via Resend
+    const sendResult = await resend.emails.send({
+      from: 'Brahmin GPT <no-reply@jyotai.app>',
+      to: [normalizedEmail],
+      subject: '🔮 Your Divine Reading from JyotAI is Ready',
+      html: `
+        <div style="font-family: serif; line-height: 1.7;">
+          <h1>🪔 Greetings, Seeker ${name}</h1>
+          <p>The cosmos has spoken. Your divine prediction is safely stored in our sacred records.</p>
+          <p>You may revisit your karmic history at any time using the JyotAI portal.</p>
+          <br/>
+          <p>🕉️ With divine blessings,<br/><strong>Brahmin GPT</strong></p>
+        </div>
+      `,
+    });
+
+    console.log('📧 Resend email response:', sendResult);
 
     return NextResponse.json({ success: true, userId, predictionId });
   } catch (error) {
