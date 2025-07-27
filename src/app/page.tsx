@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import { Invitation } from "@/components/Invitation";
-// We will create and import the form component in the next step
-// import { OfferingForm } from "@/components/OfferingForm";
+import { OfferingForm } from "@/components/OfferingForm"; // This line is the crucial fix
 
 // This defines the "states" of our journey
 type JourneyState = "INVITATION" | "OFFERING" | "DIVINATION" | "REVELATION";
@@ -22,10 +21,8 @@ export default function Home() {
       )}
       
       {journeyState === "OFFERING" && (
-        // This will be our multi-step form. For now, it's a placeholder.
-        <div>
-          <p>The Offering Sequence Begins Here...</p>
-        </div>
+        // We are now rendering our beautiful, animated form, not the old placeholder
+        <OfferingForm />
       )}
     </main>
   );
