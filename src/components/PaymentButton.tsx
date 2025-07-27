@@ -6,11 +6,16 @@ import { useState } from "react";
 
 // THIS IS THE FIX: The Razorpay property on the window object is not always there,
 // so we make it optional (?) to satisfy the strictest TypeScript rules.
+type RazorpayInstance = {
+  open: () => void;
+};
+
 declare global {
   interface Window {
-    Razorpay?: any;
+    Razorpay?: new (options: any) => RazorpayInstance;
   }
 }
+
 
 interface RazorpayResponse {
   razorpay_payment_id: string;
