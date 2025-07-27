@@ -1,26 +1,53 @@
-@import "tailwindcss";
+/* Import our divine fonts from Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Marcellus&family=Poppins:wght@400;700&display=swap');
 
+/* Standard Tailwind CSS setup */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  This is our theme setup. It defines the default colors
+  and sets up a beautiful dark mode that respects the user's OS setting.
+*/
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --background: #ffffff; /* Light mode background */
+  --foreground: #171717; /* Light mode text */
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #0d1117; /* A deep, divine navy for dark mode */
+    --foreground: #ededed; /* Dark mode text */
   }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  /* 
+    THIS IS OUR UPGRADE: We are now using our beautiful brand fonts.
+    'Poppins' will be the default for all text. We will apply 'Marcellus'
+    selectively to our main headings for that elegant, authoritative feel.
+  */
+  font-family: 'Poppins', sans-serif;
+}
+
+/* 
+  This is the animation for our result display.
+  It makes the prediction appear gracefully.
+*/
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.5s ease-out forwards;
 }

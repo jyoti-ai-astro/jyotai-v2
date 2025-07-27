@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+// Razorpay and AI integration types
 type RazorpayResponse = {
   razorpay_payment_id: string;
   razorpay_order_id: string;
@@ -16,8 +17,14 @@ type RazorpayOptions = {
   description: string;
   order_id: string;
   handler: (response: RazorpayResponse) => void;
-  prefill?: { name?: string; email?: string; contact?: string };
-  theme?: { color?: string };
+  prefill?: {
+    name?: string;
+    email?: string;
+    contact?: string;
+  };
+  theme?: {
+    color?: string;
+  };
 };
 
 type RazorpayInstance = {
@@ -35,6 +42,7 @@ export function PaymentButton() {
   const [prediction, setPrediction] = useState<string | null>(null);
 
   const getPrediction = async () => {
+    setIsLoading(true);
     try {
       const aiApiUrl = `${process.env.NEXT_PUBLIC_AI_BRAIN_API_URL}/api/predict`;
 
@@ -52,14 +60,15 @@ export function PaymentButton() {
       if (error instanceof Error) {
         alert(error.message);
       } else {
-        alert("An unknown error occurred.");
+        alert("An unknown error occurred while contacting the oracle.");
       }
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const makePayment = async () => {
     setIsLoading(true);
-
     try {
       const res = await fetch("/api/razorpay/order", { method: "POST" });
       if (!res.ok) throw new Error("Failed to create Razorpay order");
@@ -107,16 +116,16 @@ export function PaymentButton() {
       if (error instanceof Error) {
         alert("Could not connect to the payment gateway.\n" + error.message);
       } else {
-        alert("Unknown error during payment.");
+        alert("Unknown error during payment process.");
       }
-      console.error("Payment error:", error);
       setIsLoading(false);
     }
   };
 
+  // UI: Show prediction or payment button
   if (prediction) {
     return (
-      <div className="mt-8 p-6 bg-gray-800 rounded-lg shadow-lg text-left">
+      <div className="mt-8 p-6 bg-gray-800 rounded-lg shadow-lg text-left animate-fadeIn">
         <h2 className="text-2xl font-bold mb-4 text-yellow-500">🔮 A Message from the Cosmos:</h2>
         <p className="text-lg whitespace-pre-wrap text-white">{prediction}</p>
       </div>
@@ -129,7 +138,7 @@ export function PaymentButton() {
       disabled={isLoading}
       className="bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-4 px-8 rounded-lg text-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
     >
-      {isLoading ? "Connecting..." : "Pay ₹499 to Reveal Your Destiny"}
+      {isLoading ? "Preparing Your Portal..." : "Pay ₹499 to Reveal Your Destiny"}
     </button>
   );
 }
