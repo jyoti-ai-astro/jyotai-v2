@@ -20,3 +20,20 @@ body {
   background: rgb(var(--background-rgb));
   font-family: 'Poppins', sans-serif;
 }
+/* Styling for our Divine Calendar (react-day-picker) */
+.rdp {
+  --rdp-cell-size: 40px;
+  --rdp-accent-color: #FFD700; /* Celestial Gold */
+  --rdp-background-color: #ca8a04; /* Darker Gold for hover */
+  --rdp-accent-color-dark: #FFD700;
+  --rdp-background-color-dark: #ca8a04;
+  --rdp-outline: 2px solid var(--rdp-accent-color);
+  --rdp-outline-selected: 3px solid var(--rdp-accent-color);
+  margin: 1em;
+}
+.rdp-caption_label, .rdp-nav_button {
+  color: #FFD700; /* Celestial Gold */
+}
+.rdp-head_cell {
+  color: #C77DFF; /* Supernova Magenta */
+}
