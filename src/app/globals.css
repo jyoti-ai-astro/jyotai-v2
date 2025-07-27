@@ -1,4 +1,4 @@
-/* Import our divine fonts from Google Fonts */
+/* Import our divine fonts */
 @import url('https://fonts.googleapis.com/css2?family=Marcellus&family=Poppins:wght@400;700&display=swap');
 
 /* Standard Tailwind CSS setup */
@@ -6,48 +6,17 @@
 @tailwind components;
 @tailwind utilities;
 
-/*
-  This is our theme setup. It defines the default colors
-  and sets up a beautiful dark mode that respects the user's OS setting.
+/* 
+  This is our "Divine Cosmos" theme.
+  It sets up our core colors and fonts.
 */
 :root {
-  --background: #ffffff; /* Light mode background */
-  --foreground: #171717; /* Light mode text */
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0d1117; /* A deep, divine navy for dark mode */
-    --foreground: #ededed; /* Dark mode text */
-  }
+  --background-rgb: 13, 17, 23;      /* Cosmic Navy */
+  --foreground-rgb: 255, 255, 255;   /* Starlight White */
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  /* 
-    THIS IS OUR UPGRADE: We are now using our beautiful brand fonts.
-    'Poppins' will be the default for all text. We will apply 'Marcellus'
-    selectively to our main headings for that elegant, authoritative feel.
-  */
+  color: rgb(var(--foreground-rgb));
+  background: rgb(var(--background-rgb));
   font-family: 'Poppins', sans-serif;
-}
-
-/* 
-  This is the animation for our result display.
-  It makes the prediction appear gracefully.
-*/
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.animate-fadeIn {
-  animation: fadeIn 0.5s ease-out forwards;
 }
