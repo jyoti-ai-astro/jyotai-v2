@@ -4,14 +4,14 @@
 
 import { useState } from "react";
 
+// THIS IS THE FIX: The Razorpay property on the window object is not always there,
+// so we make it optional (?) to satisfy the strictest TypeScript rules.
 declare global {
   interface Window {
-    Razorpay: any;
+    Razorpay?: any;
   }
 }
 
-// THIS IS THE FIX: We are defining the exact shape of the response object.
-// This tells the "strict teacher" exactly what to expect. No more "any".
 interface RazorpayResponse {
   razorpay_payment_id: string;
   razorpay_order_id: string;
@@ -36,6 +36,12 @@ export function PaymentButton() {
         setIsLoading(false);
       };
       script.onload = () => {
+        if (!window.Razorpay) {
+          alert("Razorpay SDK not available.");
+          setIsLoading(false);
+          return;
+        }
+        
         const rzp = new window.Razorpay({
           key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
           amount: order.amount.toString(),
@@ -43,7 +49,6 @@ export function PaymentButton() {
           name: "JyotAI Divine Reading",
           description: "Instant Vedic Insight",
           order_id: order.id,
-          // The handler now uses our specific, correct RazorpayResponse type
           handler: function (response: RazorpayResponse) {
             alert(`Payment Successful! Payment ID: ${response.razorpay_payment_id}`);
           },
