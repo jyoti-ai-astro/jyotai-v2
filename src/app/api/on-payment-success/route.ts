@@ -39,11 +39,12 @@ export async function POST(req: Request) {
       createdAt: new Date().toISOString(),
     });
 
+    // This line is now correct because we are using the correct 'admin' object
     await adminDb.collection('users').doc(userId).update({
       credits: admin.firestore.FieldValue.increment(-1),
     });
 
-    console.log(`Prediction saved for user ${userId}.`);
+    console.log(`Prediction saved for user ${userId}. A magic link would be sent to ${userEmail}.`);
     return NextResponse.json({ success: true, userId });
 
   } catch (error) {
