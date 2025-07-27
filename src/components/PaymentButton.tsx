@@ -1,26 +1,39 @@
-// src/components/PaymentButton.tsx
-
 "use client";
 
 import { useState } from "react";
 
-// THIS IS THE FIX: The Razorpay property on the window object is not always there,
-// so we make it optional (?) to satisfy the strictest TypeScript rules.
+type RazorpayResponse = {
+  razorpay_payment_id: string;
+  razorpay_order_id: string;
+  razorpay_signature: string;
+};
+
+type RazorpayOptions = {
+  key: string;
+  amount: string;
+  currency: string;
+  name: string;
+  description: string;
+  order_id: string;
+  handler: (response: RazorpayResponse) => void;
+  prefill?: {
+    name?: string;
+    email?: string;
+    contact?: string;
+  };
+  theme?: {
+    color?: string;
+  };
+};
+
 type RazorpayInstance = {
   open: () => void;
 };
 
 declare global {
   interface Window {
-    Razorpay?: new (options: any) => RazorpayInstance;
+    Razorpay?: new (options: RazorpayOptions) => RazorpayInstance;
   }
-}
-
-
-interface RazorpayResponse {
-  razorpay_payment_id: string;
-  razorpay_order_id: string;
-  razorpay_signature: string;
 }
 
 export function PaymentButton() {
@@ -33,7 +46,7 @@ export function PaymentButton() {
       const res = await fetch("/api/razorpay/order", { method: "POST" });
       if (!res.ok) throw new Error("Failed to create Razorpay order");
       const { order } = await res.json();
-
+      
       const script = document.createElement("script");
       script.src = "https://checkout.razorpay.com/v1/checkout.js";
       script.onerror = () => {
@@ -46,9 +59,9 @@ export function PaymentButton() {
           setIsLoading(false);
           return;
         }
-        
+
         const rzp = new window.Razorpay({
-          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "",
           amount: order.amount.toString(),
           currency: order.currency,
           name: "JyotAI Divine Reading",
@@ -70,7 +83,6 @@ export function PaymentButton() {
         setIsLoading(false);
       };
       document.body.appendChild(script);
-
     } catch (error) {
       alert("Could not connect to the payment gateway. Please try again.");
       console.error("Payment initiation error:", error);
