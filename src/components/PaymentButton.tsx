@@ -71,7 +71,11 @@ export function PaymentButton({ name, dob, query }: PaymentButtonProps) {
     setIsLoading(true);
     try {
       const res = await fetch("/api/razorpay/order", { method: "POST" });
-      if (!res.ok) throw new Error("Failed to create Razorpay order");
+      if (!res.ok) {
+      const err = await res.json();
+      console.error("❌ Razorpay Order API Error:", err);
+      throw new Error(err.error || "Failed to create Razorpay order");
+      }
       const { order } = await res.json();
       
       const userEmail = "test.user@example.com"; // We will get this from the form later
