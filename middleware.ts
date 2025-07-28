@@ -8,7 +8,7 @@ import { adminAuth } from '@/lib/firebase-admin';
  * - If there IS a cookie but it's invalid or not admin → redirect to /login
  * - If valid & isAdmin → let them in
  *
- * Debug logs are included so you can see exactly what happens in Vercel / local logs.
+ * Debug logs are included so you can see exactly what happens in Vercel logs.
  */
 export async function middleware(req: NextRequest) {
   // Debug: prove the middleware is actually firing
