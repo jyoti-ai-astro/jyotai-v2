@@ -36,9 +36,9 @@ export default function AdminDashboard() {
         <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
           <p>The grand table of users will be forged here in our next milestone.</p>
           <p className="mt-4 text-sm text-gray-400">
-            It will include the user's name, email, plan, and credits.
+            It will include the user&apos;s name, email, plan, and credits.
             And next to each user, we will place the sacred button: 
-            <span className="font-bold text-celestial-gold">"View Sentry Logs for this User"</span>.
+            <span className="font-bold text-celestial-gold">&quot;View Sentry Logs for this User&quot;</span>.
           </p>
         </div>
       </div>
