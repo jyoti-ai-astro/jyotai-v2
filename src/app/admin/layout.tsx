@@ -1,4 +1,5 @@
 // src/app/admin/layout.tsx
+
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { adminAuth } from '@/lib/firebase-admin';
@@ -10,7 +11,9 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = cookies().get('session')?.value;
+  // ✅ await cookies() — it's a Promise in app directory (server context)
+  const cookieStore = cookies();
+  const session = cookieStore.get('session')?.value;
 
   if (!session) {
     redirect('/login');
