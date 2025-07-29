@@ -4,15 +4,14 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { adminAuth } from '@/lib/firebase-admin';
 
-export const dynamic = 'force-dynamic'; // make sure this route isn't prerendered
+export const dynamic = 'force-dynamic'; // ensure route is always server-rendered
 
 export default async function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  // ✅ await cookies() — it's a Promise in app directory (server context)
-  const cookieStore = cookies();
+  const cookieStore = cookies(); // ✅ synchronous
   const session = cookieStore.get('session')?.value;
 
   if (!session) {
@@ -21,6 +20,7 @@ export default async function AdminLayout({
 
   try {
     const decoded = await adminAuth.verifySessionCookie(session, true);
+
     if (!decoded.isAdmin) {
       redirect('/login');
     }
