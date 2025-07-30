@@ -1,9 +1,7 @@
 // src/app/admin/layout.tsx
-
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { adminAuth } from '@/lib/firebase-admin';
-import { DecodedIdToken } from 'firebase-admin/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,21 +10,20 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const cookieStore = cookies();
-  const sessionCookie = cookieStore.get('session');
+  const cookieStore = await cookies(); // ✅ FIXED: await the Promise
+  const sessionCookie = cookieStore.get('session')?.value;
 
   if (!sessionCookie) {
     redirect('/login');
   }
 
   try {
-    const decoded = await adminAuth.verifySessionCookie(sessionCookie.value, true) as DecodedIdToken & { isAdmin?: boolean };
-
+    const decoded = await adminAuth.verifySessionCookie(sessionCookie, true);
     if (!decoded.isAdmin) {
       redirect('/login');
     }
-  } catch (err) {
-    console.error('❌ verifySessionCookie failed:', err);
+  } catch (e) {
+    console.error('verifySessionCookie failed:', e);
     redirect('/login');
   }
 
