@@ -3,16 +3,16 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { adminAuth } from '@/lib/firebase-admin';
+import { DecodedIdToken } from 'firebase-admin/auth';
 
-export const dynamic = 'force-dynamic'; // Disable static rendering
+export const dynamic = 'force-dynamic';
 
 export default async function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const cookieStore = cookies(); // ✅ synchronous in App Router
-
+  const cookieStore = cookies();
   const sessionCookie = cookieStore.get('session');
 
   if (!sessionCookie) {
@@ -20,9 +20,9 @@ export default async function AdminLayout({
   }
 
   try {
-    const decoded = await adminAuth.verifySessionCookie(sessionCookie.value, true);
+    const decoded = await adminAuth.verifySessionCookie(sessionCookie.value, true) as DecodedIdToken & { isAdmin?: boolean };
 
-    if (!(decoded as any).isAdmin) {
+    if (!decoded.isAdmin) {
       redirect('/login');
     }
   } catch (err) {
