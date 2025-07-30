@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server';
-import { adminAuth } from '@/lib/firebase-admin';
 
 export async function POST(req: Request) {
   try {
     const authorization = req.headers.get('Authorization');
     if (authorization?.startsWith('Bearer ')) {
       const idToken = authorization.split('Bearer ')[1];
-      
+
+      // ⬇️ Dynamic import to avoid early access to process.env at build time
+      const { adminAuth } = await import('@/lib/firebase-admin');
+
       // Set session expiration to 14 days.
       const expiresIn = 60 * 60 * 24 * 14 * 1000;
       const sessionCookie = await adminAuth.createSessionCookie(idToken, { expiresIn });
@@ -23,6 +25,7 @@ export async function POST(req: Request) {
       response.cookies.set(options);
       return response;
     }
+
     return NextResponse.json({ status: 'error', message: 'Unauthorized' }, { status: 401 });
   } catch (error) {
     console.error("Session login error:", error);

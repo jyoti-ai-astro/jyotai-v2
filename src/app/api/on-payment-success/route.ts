@@ -1,7 +1,6 @@
 // src/app/api/on-payment-success/route.ts
 
 import { NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebase-admin';
 import admin from 'firebase-admin';
 import { randomBytes } from 'crypto';
 import nodemailer from 'nodemailer';
@@ -17,8 +16,9 @@ const transport = nodemailer.createTransport({
 
 export async function POST(req: Request) {
   try {
-    const { userEmail, paymentId, orderId, name, dob, query, prediction } = await req.json();
+    const { adminDb } = await import('@/lib/firebase-admin'); // ✅ move inside
 
+    const { userEmail, paymentId, orderId, name, dob, query, prediction } = await req.json();
     const normalizedEmail = userEmail.trim().toLowerCase();
 
     const usersRef = adminDb.collection('users');

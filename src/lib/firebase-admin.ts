@@ -1,17 +1,15 @@
-// src/lib/firebase-admin.ts
 import admin from 'firebase-admin';
 
+let app: admin.app.App;
+
 if (!admin.apps.length) {
-  if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-    throw new Error("❌ Firebase Admin secret key is not configured.");
-  }
-
-  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
-
-  admin.initializeApp({
+  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY!);
+  app = admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
   });
+} else {
+  app = admin.app();
 }
 
-export const adminDb = admin.firestore();
-export const adminAuth = admin.auth();
+export const adminDb = app.firestore();
+export const adminAuth = app.auth();
