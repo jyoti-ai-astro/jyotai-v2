@@ -10,26 +10,42 @@ export async function POST(req: Request) {
 
     const normalizedEmail = userEmail.trim().toLowerCase();
 
-    // Firebase Auth logic (perfect as it is)
+    // Firebase Auth logic
     let user: admin.auth.UserRecord;
     try {
       user = await adminAuth.getUserByEmail(normalizedEmail);
     } catch (error: unknown) {
-      if ((error as any).code === 'auth/user-not-found') {
+      if ((error as { code?: string }).code === 'auth/user-not-found') {
         user = await adminAuth.createUser({ email: normalizedEmail, displayName: name, emailVerified: true });
-      } else { throw error; }
+      } else {
+        throw error;
+      }
     }
 
     // Firestore logic
     const userRef = adminDb.collection('users').doc(user.uid);
     const userDoc = await userRef.get();
     if (!userDoc.exists) {
-      await userRef.set({ email: normalizedEmail, name, plan: 'standard', createdAt: new Date().toISOString(), credits: 3 });
+      await userRef.set({
+        email: normalizedEmail,
+        name,
+        plan: 'standard',
+        createdAt: new Date().toISOString(),
+        credits: 3
+      });
     }
+
     const predictionId = `pred_${randomBytes(12).toString('hex')}`;
-    await userRef.collection('predictions').doc(predictionId).set({ query, prediction, dob, paymentId, orderId, createdAt: new Date().toISOString() });
-    
-    // Decrement credit
+    await userRef.collection('predictions').doc(predictionId).set({
+      query,
+      prediction,
+      dob,
+      paymentId,
+      orderId,
+      createdAt: new Date().toISOString()
+    });
+
+    // Decrement credits
     await userRef.update({
       credits: admin.firestore.FieldValue.increment(-1),
       lastPredictionAt: new Date().toISOString(),
@@ -40,7 +56,7 @@ export async function POST(req: Request) {
       url: `${process.env.NEXT_PUBLIC_BASE_URL}/api/auth/callback`,
     });
 
-    // Send via ZeptoMail
+    // Send email via ZeptoMail
     const transporter = nodemailer.createTransport({
       host: "smtp.zeptomail.in",
       port: 587,
@@ -71,7 +87,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ status: "✅ Email sent successfully!" });
 
-  } catch (err) {
+  } catch (err: unknown) {
     console.error("🔥 Error in on-payment-success:", err);
     return NextResponse.json({ error: "Failed to process payment webhook." }, { status: 500 });
   }
