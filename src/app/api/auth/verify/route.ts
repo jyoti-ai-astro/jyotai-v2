@@ -1,30 +1,23 @@
 // src/app/api/auth/verify/route.ts
+import { NextResponse } from 'next/server';
+import { adminAuth } from '@/lib/firebase-admin'; // Must be Edge-safe import
 
-import { NextResponse } from "next/server";
-import { adminAuth } from "@/lib/firebase-admin";
-
-export const runtime = "nodejs"; // Ensure this route runs in Node.js
-
-export async function POST(request: Request) {
+export async function POST(req: Request) {
   try {
-    const { token } = await request.json();
+    const { sessionCookie } = await req.json();
 
-    if (!token) {
-      return NextResponse.json(
-        { error: "No token provided" },
-        { status: 400 }
-      );
+    if (!sessionCookie) {
+      return NextResponse.json({ ok: false });
     }
 
-    const decoded = await adminAuth.verifyIdToken(token);
+    const decodedClaims = await adminAuth.verifySessionCookie(sessionCookie, true);
 
-    if (!decoded || !decoded.uid) {
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
-    }
-
-    return NextResponse.json({ message: "Valid token", uid: decoded.uid });
-  } catch (error: any) {
-    console.error("❌ Token verification failed:", error.message);
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({
+      ok: true,
+      isAdmin: decodedClaims.isAdmin === true,
+    });
+  } catch (err) {
+    console.error('❌ API Verify Error:', err);
+    return NextResponse.json({ ok: false });
   }
 }

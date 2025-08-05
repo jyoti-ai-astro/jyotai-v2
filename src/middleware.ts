@@ -9,30 +9,29 @@ export async function middleware(req: NextRequest) {
   }
 
   if (!sessionCookie) {
-    const loginUrl = new URL('/login', req.url);
-    return NextResponse.redirect(loginUrl);
+    return NextResponse.redirect(new URL('/login', req.url));
   }
 
   try {
-    const { initializeApp, applicationDefault } = await import('firebase-admin/app');
-    const { getAuth } = await import('firebase-admin/auth');
+    const verifyRes = await fetch(`${req.nextUrl.origin}/api/auth/verify`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `__session=${sessionCookie}`,
+      },
+      body: JSON.stringify({ sessionCookie }),
+    });
 
-    // Avoid initializing multiple times
-    const app = initializeApp({ credential: applicationDefault() });
-    const auth = getAuth(app);
-    const decodedClaims = await auth.verifySessionCookie(sessionCookie, true);
+    const result = await verifyRes.json();
 
-    // Final gate: Must have isAdmin flag
-    if (!decodedClaims.isAdmin) {
-      const loginUrl = new URL('/login', req.url);
-      return NextResponse.redirect(loginUrl);
+    if (!result.ok || !result.isAdmin) {
+      return NextResponse.redirect(new URL('/login', req.url));
     }
 
     return NextResponse.next();
-  } catch (err) {
-    console.error("🔥 Admin Middleware Error:", err);
-    const loginUrl = new URL('/login', req.url);
-    return NextResponse.redirect(loginUrl);
+  } catch (error) {
+    console.error('🔥 Middleware fetch error:', error);
+    return NextResponse.redirect(new URL('/login', req.url));
   }
 }
 
