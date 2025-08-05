@@ -1,54 +1,57 @@
+// src/middleware.ts
+
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { adminAuth } from '@/lib/firebase-admin';
 
 /**
- * Global gatekeeper for all `/admin/*` routes.
- * - If there is NO `session` cookie → redirect to /login
- * - If there IS a cookie but it's invalid or not admin → redirect to /login
- * - If valid & isAdmin → let them in
- *
- * Debug logs are included so you can see exactly what happens in Vercel logs.
+ * Global gatekeeper for all `/admin/*` routes — Edge-compatible version.
+ * - Checks for `__session` cookie (set after login)
+ * - Calls `/api/auth/verify` (Node.js API route) to validate token
+ * - Redirects to `/login` if invalid or missing
  */
 export async function middleware(req: NextRequest) {
-  // Debug: prove the middleware is actually firing
-  console.log('🛡️ Middleware triggered at:', req.nextUrl.pathname);
+  console.log('🛡️ [middleware] Triggered at:', req.nextUrl.pathname);
 
   const url = req.nextUrl.clone();
 
   // Only protect /admin routes
   if (!url.pathname.startsWith('/admin')) {
-    console.log('➡️ Not an /admin route, letting it pass');
+    console.log('➡️ [middleware] Not an /admin route, letting it pass');
     return NextResponse.next();
   }
 
-  // Look for the session cookie that we set in /api/auth/login
-  const sessionCookie = req.cookies.get('session')?.value;
-  console.log('🔑 Has session cookie?', !!sessionCookie);
+  const token = req.cookies.get('__session')?.value;
+  console.log('🔑 [middleware] Has __session cookie?', !!token);
 
-  if (!sessionCookie) {
-    console.log('⛔ No cookie → redirecting to /login');
+  if (!token) {
+    console.log('⛔ [middleware] No token → redirecting to /login');
     url.pathname = '/login';
     return NextResponse.redirect(url);
   }
 
   try {
-    // Validate cookie with Firebase Admin
-    const decodedClaims = await adminAuth.verifySessionCookie(sessionCookie, true);
-    console.log('✅ Cookie valid. isAdmin:', !!decodedClaims.isAdmin);
+    const verifyUrl = new URL('/api/auth/verify', req.url);
 
-    if (decodedClaims.isAdmin) {
-      // High Priest confirmed — allow access
-      return NextResponse.next();
+    const res = await fetch(verifyUrl.toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+
+    if (!res.ok) {
+      console.log('🚫 [middleware] Token invalid → redirecting to /login');
+      const redirect = NextResponse.redirect(new URL('/login', req.url));
+      redirect.cookies.delete('__session');
+      return redirect;
     }
-  } catch (error) {
-    console.error('❌ Invalid session cookie:', error);
-  }
 
-  // If we reach here, the user is not an admin (or cookie invalid)
-  console.log('🚫 Not admin → redirecting to /login');
-  url.pathname = '/login';
-  return NextResponse.redirect(url);
+    console.log('✅ [middleware] Token valid → allowing access');
+    return NextResponse.next();
+  } catch (err) {
+    console.error('🔥 [middleware] Error during verification:', err);
+    url.pathname = '/login';
+    return NextResponse.redirect(url);
+  }
 }
 
 // Tell Next.js which paths this middleware should run on
