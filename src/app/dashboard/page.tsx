@@ -2,11 +2,11 @@
 
 import { useUser } from "@/lib/hooks/useUser";
 import Loading from "@/components/ui/loading";
-import PredictionCard from "@/components/dashboard/PredictionCard";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getFirestore, collection, getDocs } from "firebase/firestore";
 import { app } from "@/lib/firebase-client";
+import DailyLuck from "@/components/ui/DailyLuck";
 
 interface Prediction {
   id: string;
@@ -39,6 +39,7 @@ export default function DashboardPage() {
   }, [user]);
 
   if (loading) return <Loading />;
+
   if (!user)
     return (
       <div className="flex flex-col items-center justify-center min-h-[70vh] text-white">
@@ -72,6 +73,9 @@ export default function DashboardPage() {
           ))}
         </div>
       )}
+
+      {/* 🔮 Daily Tip + Luck Meter */}
+      <DailyLuck />
     </div>
   );
 }
