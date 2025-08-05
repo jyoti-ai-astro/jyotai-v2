@@ -99,6 +99,7 @@ export default function ResultPage() {
         )}
       </div>
 
+      {/* Download Buttons */}
       <div className="flex flex-wrap gap-4 mt-6">
         <button
           onClick={handleDownloadPDF}
@@ -113,6 +114,22 @@ export default function ResultPage() {
           Download Image
         </button>
       </div>
+
+      {/* 🔐 PREMIUM CTA Block */}
+      {user?.plan !== "premium" && (
+        <div className="mt-10 border border-yellow-600 p-6 rounded-xl bg-yellow-900/20 text-center">
+          <h2 className="text-lg font-semibold text-yellow-300 mb-2">🔓 Unlock More Insights</h2>
+          <p className="text-yellow-100 mb-4">
+            Premium users get <strong>Lucky Gem</strong>, <strong>Astro Map</strong>, <strong>Life Path Summary</strong> & more.
+          </p>
+          <Link
+            href="/upgrade"
+            className="inline-block bg-yellow-500 hover:bg-yellow-600 text-black font-semibold py-2 px-4 rounded-lg transition"
+          >
+            Upgrade to Premium 🔮
+          </Link>
+        </div>
+      )}
     </div>
   );
 }
