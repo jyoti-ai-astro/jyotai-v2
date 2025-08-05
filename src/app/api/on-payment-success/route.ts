@@ -7,34 +7,59 @@ import nodemailer from 'nodemailer';
 export async function POST(req: Request) {
   try {
     const { userEmail, paymentId, orderId, name, dob, query, prediction } = await req.json();
-
     const normalizedEmail = userEmail.trim().toLowerCase();
 
-    // Firebase Auth logic
-    let user: admin.auth.UserRecord;
-    try {
-      user = await adminAuth.getUserByEmail(normalizedEmail);
-    } catch (error: unknown) {
-      if ((error as { code?: string }).code === 'auth/user-not-found') {
-        user = await adminAuth.createUser({ email: normalizedEmail, displayName: name, emailVerified: true });
-      } else {
-        throw error;
+    let user = await adminAuth.getUserByEmail(normalizedEmail).catch(async (error) => {
+      if (error.code === 'auth/user-not-found') {
+        return await adminAuth.createUser({
+          email: normalizedEmail,
+          displayName: name,
+          emailVerified: true,
+        });
       }
-    }
+      throw error;
+    });
 
-    // Firestore logic
     const userRef = adminDb.collection('users').doc(user.uid);
     const userDoc = await userRef.get();
+
     if (!userDoc.exists) {
       await userRef.set({
         email: normalizedEmail,
         name,
         plan: 'standard',
         createdAt: new Date().toISOString(),
-        credits: 3
+        credits: 3,
       });
     }
 
+    const userData = userDoc.exists ? userDoc.data() : { credits: 3, plan: 'standard' };
+    const plan = userData?.plan || 'standard';
+
+    // LIMIT LOGIC
+    if (plan === 'standard' && userData?.credits <= 0) {
+      return NextResponse.json(
+        { error: 'Prediction limit reached for Standard plan.' },
+        { status: 403 }
+      );
+    }
+
+    if (plan === 'premium') {
+      const snapshot = await userRef.collection('predictions').get();
+      const predictionsThisMonth = snapshot.docs.filter((doc) => {
+        const created = doc.data().createdAt;
+        return created && new Date(created).getMonth() === new Date().getMonth();
+      });
+
+      if (predictionsThisMonth.length >= 20) {
+        return NextResponse.json(
+          { error: 'Monthly prediction limit reached for Premium plan.' },
+          { status: 403 }
+        );
+      }
+    }
+
+    // ✅ SAVE prediction
     const predictionId = `pred_${randomBytes(12).toString('hex')}`;
     await userRef.collection('predictions').doc(predictionId).set({
       query,
@@ -42,21 +67,23 @@ export async function POST(req: Request) {
       dob,
       paymentId,
       orderId,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     });
 
-    // Decrement credits
-    await userRef.update({
-      credits: admin.firestore.FieldValue.increment(-1),
-      lastPredictionAt: new Date().toISOString(),
-    });
+    // 🔻 Decrement credit (Standard only)
+    if (plan === 'standard') {
+      await userRef.update({
+        credits: admin.firestore.FieldValue.increment(-1),
+        lastPredictionAt: new Date().toISOString(),
+      });
+    }
 
-    // Generate magic link
+    // 🔗 Generate magic link
     const link = await adminAuth.generateSignInWithEmailLink(normalizedEmail, {
       url: `${process.env.NEXT_PUBLIC_BASE_URL}/api/auth/callback`,
     });
 
-    // Send email via ZeptoMail
+    // ✉️ Email via ZeptoMail
     const transporter = nodemailer.createTransport({
       host: "smtp.zeptomail.in",
       port: 587,
@@ -66,7 +93,7 @@ export async function POST(req: Request) {
       },
     });
 
-    const mailOptions = {
+    await transporter.sendMail({
       from: `"Brahmin GPT from JyotAI" <oracle@jyoti.app>`,
       to: normalizedEmail,
       subject: "🔮 Your Divine Reading & Sacred Access Link",
@@ -81,14 +108,14 @@ export async function POST(req: Request) {
           <p>🕉️ With divine blessings,<br/><strong>The JyotAI Team</strong></p>
         </div>
       `,
-    };
-
-    await transporter.sendMail(mailOptions);
+    });
 
     return NextResponse.json({ status: "✅ Email sent successfully!" });
-
-  } catch (err: unknown) {
+  } catch (err) {
     console.error("🔥 Error in on-payment-success:", err);
-    return NextResponse.json({ error: "Failed to process payment webhook." }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to process payment webhook." },
+      { status: 500 }
+    );
   }
 }
