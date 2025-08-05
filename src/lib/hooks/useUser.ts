@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import type { User as FirebaseUser } from "firebase/auth";
-import { app } from "@/lib/firebase/firebase-client";
+import { app } from "@/lib/firebase-client";
 import { getFirestore, doc, getDoc, onSnapshot } from "firebase/firestore";
 
 // Define a clear type for the user object that combines Auth and Firestore data
