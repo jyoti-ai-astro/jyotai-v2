@@ -1,26 +1,39 @@
-// src/middleware.ts
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-export function middleware(req: NextRequest) {
-  // Log to verify it actually runs (you'll see this in Vercel function logs)
-  console.log('🛡️ middleware hit at:', req.nextUrl.pathname);
+export async function middleware(req: NextRequest) {
+  const sessionCookie = req.cookies.get('__session')?.value;
 
-  // Only protect /admin
   if (!req.nextUrl.pathname.startsWith('/admin')) {
     return NextResponse.next();
   }
 
-  const session = req.cookies.get('session')?.value;
-
-  if (!session) {
+  if (!sessionCookie) {
     const loginUrl = new URL('/login', req.url);
     return NextResponse.redirect(loginUrl);
   }
 
-  // (Optional) You can do a *very* light, purely string-based claim check here
-  // but don't verify with firebase-admin in middleware (edge runtime can't).
-  return NextResponse.next();
+  try {
+    const { initializeApp, applicationDefault } = await import('firebase-admin/app');
+    const { getAuth } = await import('firebase-admin/auth');
+
+    // Avoid initializing multiple times
+    const app = initializeApp({ credential: applicationDefault() });
+    const auth = getAuth(app);
+    const decodedClaims = await auth.verifySessionCookie(sessionCookie, true);
+
+    // Final gate: Must have isAdmin flag
+    if (!decodedClaims.isAdmin) {
+      const loginUrl = new URL('/login', req.url);
+      return NextResponse.redirect(loginUrl);
+    }
+
+    return NextResponse.next();
+  } catch (err) {
+    console.error("🔥 Admin Middleware Error:", err);
+    const loginUrl = new URL('/login', req.url);
+    return NextResponse.redirect(loginUrl);
+  }
 }
 
 export const config = {
