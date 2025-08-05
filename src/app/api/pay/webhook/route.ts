@@ -25,12 +25,13 @@ export async function POST(req: Request) {
       const email = event.entity.email?.toLowerCase();
       const name = event.entity.notes?.name || "Unknown";
       const purpose = event.entity.notes?.purpose || "standard";
-      const referrerCode = event.entity.notes?.referrer || null;
+      const referredBy = event.entity.notes?.ref || "";
 
       if (!email) {
         return NextResponse.json({ error: "Missing email" }, { status: 400 });
       }
 
+      // 🔐 Get or create Firebase user
       let user;
       try {
         user = await adminAuth.getUserByEmail(email);
@@ -47,52 +48,66 @@ export async function POST(req: Request) {
       }
 
       const userRef = adminDb.collection("users").doc(user.uid);
+      const userSnap = await userRef.get();
+      let referralCode = userSnap.exists && userSnap.data()?.referralCode;
 
-      const commonData: any = {
+      if (!referralCode) {
+        referralCode = user.uid.slice(0, 6) + Math.floor(Math.random() * 1000);
+      }
+
+      const commonData = {
         email,
         name,
-        plan: purpose === "upgrade" ? "premium" : "standard",
-        credits: purpose === "upgrade" ? 20 : 3,
-        createdAt: new Date().toISOString(),
+        referralCode,
       };
 
       if (purpose === "upgrade") {
-        commonData.premiumUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-        commonData.upgradedAt = new Date().toISOString();
+        await userRef.set({
+          ...commonData,
+          plan: "premium",
+          credits: 20,
+          upgradedAt: new Date().toISOString(),
+          premiumUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+        }, { merge: true });
+
+        console.log(`✅ Upgraded ${email} to Premium`);
+
+      } else {
+        await userRef.set({
+          ...commonData,
+          plan: "standard",
+          credits: 3,
+          createdAt: new Date().toISOString()
+        }, { merge: true });
+
+        console.log(`✅ Registered ${email} with Standard plan`);
       }
 
-      if (referrerCode) {
-        commonData.referredBy = referrerCode;
-
-        // Attempt to increment referral count
+      // 🎁 Referral bonus
+      if (referredBy) {
         const refSnap = await adminDb.collection("users")
-          .where("referralCode", "==", referrerCode).limit(1).get();
+          .where("referralCode", "==", referredBy)
+          .limit(1)
+          .get();
 
         if (!refSnap.empty) {
           const refDoc = refSnap.docs[0];
           const refData = refDoc.data();
-          const refRef = refDoc.ref;
+          const refCredits = refData.credits || 0;
 
-          const updatedCredits = (refData.credits || 0) + 1;
-          const updatedReferrals = (refData.referralsCount || 0) + 1;
+          await refDoc.ref.set({
+            credits: refCredits + 1
+          }, { merge: true });
 
-          await refRef.update({
-            credits: updatedCredits,
-            referralsCount: updatedReferrals,
-          });
-
-          console.log(`🎉 Referral: ${email} was referred by ${referrerCode}`);
+          console.log(`🎁 Referral bonus granted to ${refData.email}`);
         } else {
-          console.warn(`⚠️ Referrer code ${referrerCode} not found`);
+          console.warn(`⚠️ Referral code not found: ${referredBy}`);
         }
       }
-
-      await userRef.set(commonData, { merge: true });
-
-      console.log(`✅ Processed payment for ${email} with ${purpose} plan`);
     }
 
     return NextResponse.json({ status: "✅ Payment processed" });
+
   } catch (err) {
     console.error("🔥 Webhook error:", err);
     return NextResponse.json({ error: "Webhook failed" }, { status: 500 });
