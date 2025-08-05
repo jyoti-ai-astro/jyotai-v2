@@ -3,12 +3,11 @@
 import { useUser } from "@/lib/hooks/useUser";
 import Loading from "@/components/ui/loading";
 import PredictionCard from "@/components/dashboard/PredictionCard";
+import UpsellPrompt from "@/components/ui/UpsellPrompt";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { getFirestore, collection, getDocs, doc, getDoc } from "firebase/firestore";
+import { getFirestore, collection, getDocs } from "firebase/firestore";
 import { app } from "@/lib/firebase-client";
-import DailyLuck from "@/components/ui/DailyLuck";
-import UpsellPrompt from "@/components/ui/UpsellPrompt";
 
 interface Prediction {
   id: string;
@@ -17,23 +16,32 @@ interface Prediction {
   createdAt: string;
 }
 
+const tips = [
+  "Trust your intuition—it’s the voice of your soul.",
+  "🌿 A calm mind attracts powerful results.",
+  "🪔 Recite a mantra today to align your energy.",
+  "📿 Give before asking; karma listens.",
+  "✨ Light a diya for clarity in decisions.",
+  "🧘‍♂️ Today is perfect for silence. Listen more.",
+  "🌕 Avoid ego today; humility wins rewards.",
+  "🌺 Be kind without reason. Grace will follow.",
+  "📖 Read one shlok for guidance. Let it sink.",
+  "💎 Wear light colors. It calms your aura.",
+  "🔮 Be open to surprises. The universe is playful.",
+];
+
 export default function DashboardPage() {
   const { user, loading } = useUser();
   const [predictions, setPredictions] = useState<Prediction[]>([]);
-  const [credits, setCredits] = useState<number | null>(null);
   const [fetching, setFetching] = useState(true);
+  const [tip, setTip] = useState("");
+  const [luck, setLuck] = useState(0);
 
   useEffect(() => {
-    const fetchUserData = async () => {
+    const fetchPredictions = async () => {
       if (!user) return;
 
       const db = getFirestore(app);
-      const userRef = doc(db, "users", user.uid);
-      const userSnap = await getDoc(userRef);
-      const userData = userSnap.data();
-
-      setCredits(userData?.credits ?? null);
-
       const snap = await getDocs(collection(db, `users/${user.uid}/predictions`));
       const data = snap.docs.map((doc) => ({
         id: doc.id,
@@ -44,7 +52,15 @@ export default function DashboardPage() {
       setFetching(false);
     };
 
-    fetchUserData();
+    fetchPredictions();
+  }, [user]);
+
+  useEffect(() => {
+    if (user?.plan === "premium") {
+      const dailyTip = tips[new Date().getDate() % tips.length];
+      setTip(dailyTip);
+      setLuck(Math.floor(Math.random() * 10) + 1);
+    }
   }, [user]);
 
   if (loading) return <Loading />;
@@ -61,6 +77,25 @@ export default function DashboardPage() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-12">
       <h1 className="text-3xl text-white font-bold mb-6">📜 Your Predictions</h1>
+
+      {user.plan === "premium" && (
+        <>
+          <div className="bg-yellow-100/10 border border-yellow-300 p-4 rounded-xl text-white mb-4">
+            <h2 className="text-xl font-semibold text-yellow-400">🪔 Tip of the Day</h2>
+            <p>{tip}</p>
+            <div className="mt-2">
+              <p>🌟 Your Luck Meter: <strong>{luck}/10</strong></p>
+              <div className="w-full bg-yellow-900 h-2 rounded-full overflow-hidden mt-1">
+                <div className="bg-yellow-400 h-2" style={{ width: `${luck * 10}%` }}></div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {user.plan === "standard" && predictions.length >= 2 && (
+        <UpsellPrompt />
+      )}
 
       {fetching ? (
         <p className="text-gray-400">Loading divine records...</p>
@@ -81,12 +116,6 @@ export default function DashboardPage() {
           ))}
         </div>
       )}
-
-      {/* Inject Daily Luck */}
-      <DailyLuck />
-
-      {/* Upsell Prompt only for Standard users with 1 credit left */}
-      {credits === 1 && <UpsellPrompt />}
     </div>
   );
 }
