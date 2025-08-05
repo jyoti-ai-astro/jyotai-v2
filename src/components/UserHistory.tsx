@@ -5,6 +5,7 @@ import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { getFirestore, collection, getDocs } from "firebase/firestore";
 import { app } from "@/lib/firebase-client";
 import html2pdf from "html2pdf.js";
+import { toPng } from "html-to-image";
 
 interface Prediction {
   id: string;
@@ -16,7 +17,8 @@ interface Prediction {
 export default function UserHistory() {
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [loading, setLoading] = useState(true);
-  const hiddenRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const hiddenPDFRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const imageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   useEffect(() => {
     const auth = getAuth(app);
@@ -37,7 +39,7 @@ export default function UserHistory() {
   }, []);
 
   const downloadPDF = (id: string) => {
-    const element = hiddenRefs.current.get(id);
+    const element = hiddenPDFRefs.current.get(id);
     if (!element) return;
 
     html2pdf().from(element).set({
@@ -46,6 +48,21 @@ export default function UserHistory() {
       html2canvas: { scale: 2 },
       jsPDF: { unit: "in", format: "letter", orientation: "portrait" },
     }).save();
+  };
+
+  const downloadImage = async (id: string) => {
+    const element = imageRefs.current.get(id);
+    if (!element) return;
+
+    try {
+      const dataUrl = await toPng(element);
+      const link = document.createElement("a");
+      link.download = `jyotai-image-${id}.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch (error) {
+      console.error("❌ Image generation failed:", error);
+    }
   };
 
   if (loading) return <p className="text-center text-sm text-muted">Loading divine records...</p>;
@@ -57,29 +74,38 @@ export default function UserHistory() {
       ) : (
         predictions.map((p) => (
           <div key={p.id} className="border border-yellow-500 bg-white/5 p-4 rounded-xl shadow relative">
-            <p className="text-sm text-yellow-300 font-semibold">
-              {new Date(p.createdAt).toLocaleString()}
-            </p>
-            <p className="mt-1"><strong>Q:</strong> {p.query}</p>
-            <p className="text-sm text-gray-300 mt-2">
-              <strong>Reading:</strong> {p.prediction.slice(0, 300)}...
-            </p>
-            <button
-              onClick={() => downloadPDF(p.id)}
-              className="mt-4 text-sm text-yellow-400 hover:underline"
-            >
-              📥 Download Full PDF
-            </button>
+            <div ref={(el) => el && imageRefs.current.set(p.id, el)} className="bg-gradient-to-br from-black to-gray-800 text-white p-4 rounded-lg">
+              <p className="text-yellow-300 text-sm font-semibold">
+                {new Date(p.createdAt).toLocaleString()}
+              </p>
+              <p className="mt-1 text-lg font-bold">🪄 {p.query}</p>
+              <p className="text-sm mt-2">{p.prediction.slice(0, 280)}...</p>
+              <p className="mt-4 text-right text-xs text-yellow-400">✨ JyotAI</p>
+            </div>
 
-            {/* Hidden PDF content */}
+            <div className="mt-4 flex space-x-4">
+              <button
+                onClick={() => downloadPDF(p.id)}
+                className="text-sm text-yellow-400 hover:underline"
+              >
+                📥 Download PDF
+              </button>
+
+              <button
+                onClick={() => downloadImage(p.id)}
+                className="text-sm text-cyan-300 hover:underline"
+              >
+                📸 Save as Image
+              </button>
+            </div>
+
+            {/* Hidden full content for PDF only */}
             <div
-              ref={(el) => el && hiddenRefs.current.set(p.id, el)}
+              ref={(el) => el && hiddenPDFRefs.current.set(p.id, el)}
               style={{ display: "none" }}
             >
               <div style={{ padding: "20px", fontFamily: "serif" }}>
-                <h2 style={{ fontSize: "20px", color: "#222" }}>
-                  🔮 JyotAI Reading
-                </h2>
+                <h2 style={{ fontSize: "20px", color: "#222" }}>🔮 JyotAI Reading</h2>
                 <p><strong>Date:</strong> {new Date(p.createdAt).toLocaleString()}</p>
                 <p><strong>Query:</strong> {p.query}</p>
                 <hr style={{ margin: "12px 0" }} />
