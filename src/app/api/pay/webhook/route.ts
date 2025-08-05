@@ -10,7 +10,6 @@ export async function POST(req: Request) {
 
     const signature = req.headers.get('x-razorpay-signature') as string;
 
-    // Verify Razorpay signature
     const expectedSignature = crypto
       .createHmac('sha256', razorpaySecret)
       .update(rawBody)
@@ -32,7 +31,6 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Missing email" }, { status: 400 });
       }
 
-      // Get or create Firebase Auth user
       let user;
       try {
         user = await adminAuth.getUserByEmail(email);
@@ -51,16 +49,15 @@ export async function POST(req: Request) {
       const userRef = adminDb.collection("users").doc(user.uid);
 
       if (purpose === "upgrade") {
-        // 🔓 Upgrade to Premium Plan
         await userRef.set({
           plan: "premium",
-          premiumUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
           credits: 20,
+          upgradedAt: new Date().toISOString(),
+          premiumUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         }, { merge: true });
 
         console.log(`✅ Upgraded ${email} to Premium`);
       } else {
-        // 🟡 Standard Plan (Default)
         await userRef.set({
           email,
           name,

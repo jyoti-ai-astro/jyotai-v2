@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getFirestore, collection, getDocs } from "firebase/firestore";
 import { app } from "@/lib/firebase-client";
+import { differenceInDays, addDays, parseISO } from "date-fns";
 
 interface Prediction {
   id: string;
@@ -36,6 +37,10 @@ export default function DashboardPage() {
   const [fetching, setFetching] = useState(true);
   const [tip, setTip] = useState("");
   const [luck, setLuck] = useState(0);
+
+  const upgradedAt = user?.upgradedAt ? parseISO(user.upgradedAt) : null;
+  const premiumExpiresAt = upgradedAt ? addDays(upgradedAt, 30) : null;
+  const daysLeft = premiumExpiresAt ? differenceInDays(premiumExpiresAt, new Date()) : null;
 
   useEffect(() => {
     const fetchPredictions = async () => {
@@ -80,6 +85,10 @@ export default function DashboardPage() {
 
       {user.plan === "premium" && (
         <>
+          {daysLeft !== null && daysLeft >= 0 && (
+            <p className="text-yellow-400 mb-4">🌟 {daysLeft} days left in your Premium plan</p>
+          )}
+
           <div className="bg-yellow-100/10 border border-yellow-300 p-4 rounded-xl text-white mb-4">
             <h2 className="text-xl font-semibold text-yellow-400">🪔 Tip of the Day</h2>
             <p>{tip}</p>
