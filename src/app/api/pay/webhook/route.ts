@@ -51,6 +51,7 @@ export async function POST(req: Request) {
       const userSnap = await userRef.get();
       let referralCode = userSnap.exists && userSnap.data()?.referralCode;
 
+      // 🧬 Generate if missing
       if (!referralCode) {
         referralCode = user.uid.slice(0, 6) + Math.floor(Math.random() * 1000);
       }
@@ -67,17 +68,16 @@ export async function POST(req: Request) {
           plan: "premium",
           credits: 20,
           upgradedAt: new Date().toISOString(),
-          premiumUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+          premiumUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         }, { merge: true });
 
         console.log(`✅ Upgraded ${email} to Premium`);
-
       } else {
         await userRef.set({
           ...commonData,
           plan: "standard",
           credits: 3,
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
         }, { merge: true });
 
         console.log(`✅ Registered ${email} with Standard plan`);
