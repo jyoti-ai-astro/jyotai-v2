@@ -1,31 +1,34 @@
-// src/app/admin/layout.tsx
-import { cookies } from 'next/headers';
-import { redirect } from 'next/navigation';
-import { adminAuth } from '@/lib/firebase-admin';
+"use client";
 
-export const dynamic = 'force-dynamic';
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { getAuth } from "firebase/auth";
+import { app } from "@/lib/firebase-client";
 
-export default async function AdminLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const cookieStore = await cookies(); // ✅ FIXED: await the Promise
-  const sessionCookie = cookieStore.get('session')?.value;
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  const [authorized, setAuthorized] = useState(false);
+  const router = useRouter();
 
-  if (!sessionCookie) {
-    redirect('/login');
-  }
+  useEffect(() => {
+    const auth = getAuth(app);
+    const unsubscribe = auth.onAuthStateChanged(async (user) => {
+      if (!user) {
+        router.push("/login");
+        return;
+      }
 
-  try {
-    const decoded = await adminAuth.verifySessionCookie(sessionCookie, true);
-    if (!decoded.isAdmin) {
-      redirect('/login');
-    }
-  } catch (e) {
-    console.error('verifySessionCookie failed:', e);
-    redirect('/login');
-  }
+      const idTokenResult = await user.getIdTokenResult();
+      if (idTokenResult.claims.isAdmin) {
+        setAuthorized(true);
+      } else {
+        router.push("/login");
+      }
+    });
+
+    return () => unsubscribe();
+  }, [router]);
+
+  if (!authorized) return null;
 
   return <>{children}</>;
 }
