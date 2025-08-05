@@ -2,11 +2,13 @@
 
 import { useUser } from "@/lib/hooks/useUser";
 import Loading from "@/components/ui/loading";
+import PredictionCard from "@/components/dashboard/PredictionCard";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { getFirestore, collection, getDocs } from "firebase/firestore";
+import { getFirestore, collection, getDocs, doc, getDoc } from "firebase/firestore";
 import { app } from "@/lib/firebase-client";
 import DailyLuck from "@/components/ui/DailyLuck";
+import UpsellPrompt from "@/components/ui/UpsellPrompt";
 
 interface Prediction {
   id: string;
@@ -18,13 +20,20 @@ interface Prediction {
 export default function DashboardPage() {
   const { user, loading } = useUser();
   const [predictions, setPredictions] = useState<Prediction[]>([]);
+  const [credits, setCredits] = useState<number | null>(null);
   const [fetching, setFetching] = useState(true);
 
   useEffect(() => {
-    const fetchPredictions = async () => {
+    const fetchUserData = async () => {
       if (!user) return;
 
       const db = getFirestore(app);
+      const userRef = doc(db, "users", user.uid);
+      const userSnap = await getDoc(userRef);
+      const userData = userSnap.data();
+
+      setCredits(userData?.credits ?? null);
+
       const snap = await getDocs(collection(db, `users/${user.uid}/predictions`));
       const data = snap.docs.map((doc) => ({
         id: doc.id,
@@ -35,11 +44,10 @@ export default function DashboardPage() {
       setFetching(false);
     };
 
-    fetchPredictions();
+    fetchUserData();
   }, [user]);
 
   if (loading) return <Loading />;
-
   if (!user)
     return (
       <div className="flex flex-col items-center justify-center min-h-[70vh] text-white">
@@ -74,8 +82,11 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* 🔮 Daily Tip + Luck Meter */}
+      {/* Inject Daily Luck */}
       <DailyLuck />
+
+      {/* Upsell Prompt only for Standard users with 1 credit left */}
+      {credits === 1 && <UpsellPrompt />}
     </div>
   );
 }
