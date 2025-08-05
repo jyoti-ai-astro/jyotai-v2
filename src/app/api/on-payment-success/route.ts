@@ -9,7 +9,7 @@ export async function POST(req: Request) {
     const { userEmail, paymentId, orderId, name, dob, query, prediction } = await req.json();
     const normalizedEmail = userEmail.trim().toLowerCase();
 
-    let user = await adminAuth.getUserByEmail(normalizedEmail).catch(async (error) => {
+    const user = await adminAuth.getUserByEmail(normalizedEmail).catch(async (error) => {
       if (error.code === 'auth/user-not-found') {
         return await adminAuth.createUser({
           email: normalizedEmail,
