@@ -18,6 +18,7 @@ type RazorpayOptions = {
   order_id: string;
   handler: (response: RazorpayResponse) => void;
   prefill?: { name?: string; email?: string; contact?: string };
+  notes?: Record<string, string>;
   theme?: { color?: string };
 };
 
@@ -101,6 +102,15 @@ export function PaymentButton({ name, dob, query, email }: PaymentButtonProps) {
           setIsLoading(false);
           return;
         }
+
+        // 🍪 Get referral code from cookies
+        const cookies = document.cookie.split(";").reduce((acc: Record<string, string>, item) => {
+          const [key, val] = item.trim().split("=");
+          acc[key] = val;
+          return acc;
+        }, {});
+        const referralCode = cookies["referral"];
+
         const rzp = new window.Razorpay({
           key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "",
           amount: order.amount.toString(),
@@ -114,8 +124,16 @@ export function PaymentButton({ name, dob, query, email }: PaymentButtonProps) {
             email,
             contact: "9999999999",
           },
+          notes: {
+            name,
+            dob,
+            query,
+            purpose: "standard",
+            referralCode: referralCode || "",
+          },
           theme: { color: "#D4AF37" },
         });
+
         rzp.open();
         setIsLoading(false);
       };
