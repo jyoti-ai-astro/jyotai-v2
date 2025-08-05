@@ -14,13 +14,13 @@ export async function POST(req: Request) {
     let user: admin.auth.UserRecord;
     try {
       user = await adminAuth.getUserByEmail(normalizedEmail);
-    } catch (error: any) {
-      if (error.code === 'auth/user-not-found') {
+    } catch (error: unknown) {
+      if ((error as any).code === 'auth/user-not-found') {
         user = await adminAuth.createUser({ email: normalizedEmail, displayName: name, emailVerified: true });
       } else { throw error; }
     }
 
-    // Firestore logic (perfect as it is)
+    // Firestore logic
     const userRef = adminDb.collection('users').doc(user.uid);
     const userDoc = await userRef.get();
     if (!userDoc.exists) {
@@ -29,29 +29,29 @@ export async function POST(req: Request) {
     const predictionId = `pred_${randomBytes(12).toString('hex')}`;
     await userRef.collection('predictions').doc(predictionId).set({ query, prediction, dob, paymentId, orderId, createdAt: new Date().toISOString() });
     
-    // This adds the timestamp and decrements credits, as per your brilliant suggestion.
+    // Decrement credit
     await userRef.update({
       credits: admin.firestore.FieldValue.increment(-1),
       lastPredictionAt: new Date().toISOString(),
     });
 
-    // Generate Firebase Magic Link (perfect as it is)
+    // Generate magic link
     const link = await adminAuth.generateSignInWithEmailLink(normalizedEmail, {
       url: `${process.env.NEXT_PUBLIC_BASE_URL}/api/auth/callback`,
     });
 
-    // --- THIS IS THE FINAL UPGRADE: We now send the email via ZeptoMail ---
+    // Send via ZeptoMail
     const transporter = nodemailer.createTransport({
       host: "smtp.zeptomail.in",
       port: 587,
       auth: {
-        user: "emailapikey", // This is the literal string required by ZeptoMail
+        user: "emailapikey",
         pass: process.env.ZEPTO_MAIL_TOKEN as string,
       },
     });
 
     const mailOptions = {
-      from: '"Brahmin GPT from JyotAI" <oracle@jyoti.app>', // Ensure oracle@jyoti.app is a verified sender
+      from: `"Brahmin GPT from JyotAI" <oracle@jyoti.app>`,
       to: normalizedEmail,
       subject: "🔮 Your Divine Reading & Sacred Access Link",
       html: `
@@ -68,12 +68,11 @@ export async function POST(req: Request) {
     };
 
     await transporter.sendMail(mailOptions);
-    console.log(`📧 ZeptoMail email sent successfully to ${normalizedEmail}.`);
-    // --- END OF FINAL UPGRADE ---
 
-    return NextResponse.json({ success: true, userId: user.uid });
-  } catch (error) {
-    console.error("❌ Error in on-payment-success:", error);
-    return NextResponse.json({ success: false, error: 'Internal Server Error' }, { status: 500 });
+    return NextResponse.json({ status: "✅ Email sent successfully!" });
+
+  } catch (err) {
+    console.error("🔥 Error in on-payment-success:", err);
+    return NextResponse.json({ error: "Failed to process payment webhook." }, { status: 500 });
   }
 }

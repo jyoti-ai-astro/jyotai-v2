@@ -2,15 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { auth } from "@/lib/firebase";
-import { signInWithEmailAndPassword, isSignInWithEmailLink, signInWithEmailLink } from "firebase/auth";
+import { isSignInWithEmailLink, signInWithEmailLink } from "firebase/auth";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
 
-  // --- THIS IS THE UPGRADE: Logic to handle the incoming Magic Link ---
   useEffect(() => {
     const savedEmail = window.localStorage.getItem('emailForSignIn');
     if (savedEmail && isSignInWithEmailLink(auth, window.location.href)) {
@@ -30,14 +27,7 @@ export default function LoginPage() {
         });
     }
   }, []);
-  // --- END OF UPGRADE ---
 
-
-  const handleLogin = async (e: React.FormEvent) => {
-    // ... (Admin login logic remains the same)
-  };
-
-  // NEW: When the user types their email, we save it to local storage
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setEmail(e.target.value);
     window.localStorage.setItem('emailForSignIn', e.target.value);
@@ -49,20 +39,12 @@ export default function LoginPage() {
         <h1 className="text-4xl text-center text-celestial-gold mb-8" style={{ fontFamily: "'Marcellus', serif" }}>
           Enter the Sanctum
         </h1>
-        {message && <p className="text-green-400 text-center mb-4">{message}</p>}
-        <form onSubmit={handleLogin} className="space-y-6">
+        <form className="space-y-6">
           <input
             type="email"
             value={email}
-            onChange={handleEmailChange} // Use our new handler
+            onChange={handleEmailChange}
             placeholder="Divine Email"
-            className="w-full p-4 bg-gray-700 text-white rounded-md"
-          />
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Sacred Password (for High Priest)"
             className="w-full p-4 bg-gray-700 text-white rounded-md"
           />
           <button type="submit" className="w-full font-bold py-3 px-8 rounded-lg bg-celestial-gold text-cosmic-navy">

@@ -1,33 +1,27 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { auth } from "@/lib/firebase"; // Our client-side auth helper
+import { auth } from "@/lib/firebase";
 import { onAuthStateChanged, User } from "firebase/auth";
+import Link from "next/link";
 
 export default function DashboardPage() {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // This is a real-time listener that checks if a user is logged in
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setUser(user);
-      } else {
-        setUser(null);
-      }
+      if (user) setUser(user);
+      else setUser(null);
       setIsLoading(false);
     });
-
-    // Clean up the listener when the component unmounts
     return () => unsubscribe();
   }, []);
 
   const handleSignOut = async () => {
     await auth.signOut();
-    // We also need to clear our secure session cookie
     await fetch('/api/auth/logout', { method: 'POST' });
-    window.location.href = '/'; // Redirect to homepage
+    window.location.href = '/';
   };
 
   if (isLoading) {
@@ -40,10 +34,10 @@ export default function DashboardPage() {
 
   if (!user) {
     return (
-       <main className="flex min-h-screen items-center justify-center">
+      <main className="flex min-h-screen items-center justify-center">
         <div className="text-center">
           <p className="text-2xl text-red-500">Access Denied.</p>
-          <a href="/" className="text-celestial-gold mt-4">Return to the portal.</a>
+          <Link href="/" className="text-celestial-gold mt-4">Return to the portal.</Link>
         </div>
       </main>
     );
