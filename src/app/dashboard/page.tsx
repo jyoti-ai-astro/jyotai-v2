@@ -37,6 +37,7 @@ export default function DashboardPage() {
   const [tip, setTip] = useState("");
   const [luck, setLuck] = useState(0);
   const [referralCode, setReferralCode] = useState("");
+  const [referredBy, setReferredBy] = useState("");
 
   useEffect(() => {
     const fetchData = async () => {
@@ -44,16 +45,20 @@ export default function DashboardPage() {
 
       const db = getFirestore(app);
       const userDoc = await getDoc(doc(db, "users", user.uid));
-      const refCode = userDoc.data()?.referralCode || "";
+      const data = userDoc.data();
+      const refCode = data?.referralCode || "";
+      const refBy = data?.referredBy || "";
+
       setReferralCode(refCode);
+      setReferredBy(refBy);
 
       const snap = await getDocs(collection(db, `users/${user.uid}/predictions`));
-      const data = snap.docs.map((doc) => ({
+      const dataList = snap.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       })) as Prediction[];
 
-      setPredictions(data.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+      setPredictions(dataList.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
       setFetching(false);
     };
 
@@ -118,6 +123,13 @@ export default function DashboardPage() {
               Share via WhatsApp
             </a>
           </div>
+        </div>
+      )}
+
+      {/* Referred By Banner */}
+      {referredBy && (
+        <div className="mb-4 bg-blue-900/30 border border-blue-400 p-4 rounded-lg text-blue-300">
+          🎁 You were referred by <strong>{referredBy}</strong>. Spread the divine karma forward!
         </div>
       )}
 
