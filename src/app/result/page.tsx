@@ -1,14 +1,10 @@
 // src/app/result/page.tsx
-
 "use client";
 
 import { useEffect, useState, useRef } from "react";
 import Loading from "@/components/ui/loading";
-import html2pdf from "html2pdf.js";
-import { toPng } from 'html-to-image';
-import { useUser } from "@/lib/hooks/useUser";
+import { useUser, AppUser } from "@/lib/hooks/useUser";
 import Link from "next/link";
-import { AppUser } from "@/lib/hooks/useUser"; // Import the AppUser type
 
 // Define a type for the prediction result
 interface PredictionResult {
@@ -24,7 +20,12 @@ export default function ResultPage() {
   const { user } = useUser();
   const resultSectionRef = useRef<HTMLDivElement>(null);
 
+  // Lazy-loaded libs (so they only load in the browser)
+  const [html2Pdf, setHtml2Pdf] = useState<any>(null);
+  const [toPng, setToPng] = useState<any>(null);
+
   useEffect(() => {
+    // Load last prediction from localStorage
     const stored = localStorage.getItem("last_prediction");
     if (stored) {
       try {
@@ -35,27 +36,40 @@ export default function ResultPage() {
       }
     }
     setLoading(false);
+
+    // Dynamically import browser-only libs
+    (async () => {
+      const h2p = (await import("html2pdf.js")).default;
+      const { toPng: toPngFn } = await import("html-to-image");
+      setHtml2Pdf(() => h2p);
+      setToPng(() => toPngFn);
+    })();
   }, []);
 
   const handleDownloadPDF = () => {
+    if (!html2Pdf) return;
     const element = resultSectionRef.current;
     if (element) {
       const opt = {
-        margin:       0.5,
-        filename:     'JyotAI_Prediction.pdf',
-        image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true, backgroundColor: '#0f172a' },
-        jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+        margin: 0.5,
+        filename: "JyotAI_Prediction.pdf",
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: "#0f172a" },
+        jsPDF: { unit: "in", format: "letter", orientation: "portrait" },
       };
-      html2pdf().from(element).set(opt).save();
+      html2Pdf().from(element).set(opt).save();
     }
   };
 
   const handleDownloadImage = async () => {
+    if (!toPng) return;
     const element = resultSectionRef.current;
     if (!element) return;
     try {
-      const dataUrl = await toPng(element, { quality: 0.95, backgroundColor: '#0f172a' });
+      const dataUrl = await toPng(element, {
+        quality: 0.95,
+        backgroundColor: "#0f172a",
+      });
       const link = document.createElement("a");
       link.download = "JyotAI_Prediction.jpeg";
       link.href = dataUrl;
@@ -66,47 +80,78 @@ export default function ResultPage() {
   };
 
   if (loading) return <Loading />;
-  
+
   if (!result) {
     return (
       <div className="text-center text-white mt-20">
         <p className="text-xl">No result found.</p>
-        <Link href="/dashboard" className="text-celestial-gold underline mt-4 block">
+        <Link
+          href="/dashboard"
+          className="text-celestial-gold underline mt-4 block"
+        >
           Go to your Dashboard
         </Link>
       </div>
     );
   }
 
-  // Type assertion for user to access plan
   const appUser = user as AppUser | null;
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-12 text-white">
-      <h1 className="text-3xl font-bold mb-6 text-center text-celestial-gold">🔮 Your Divine Reading</h1>
+      <h1 className="text-3xl font-bold mb-6 text-center text-celestial-gold">
+        🔮 Your Divine Reading
+      </h1>
 
-      <div id="result-section" ref={resultSectionRef} className="bg-slate-900 p-8 rounded-xl border border-yellow-400 space-y-4">
-        <p><strong>Name:</strong> {result.name}</p>
-        <p><strong>Date of Birth:</strong> {result.dob}</p>
-        <p><strong>Your Question:</strong> {result.query}</p>
-        <p><strong>Prediction:</strong> {result.prediction}</p>
+      <div
+        id="result-section"
+        ref={resultSectionRef}
+        className="bg-slate-900 p-8 rounded-xl border border-yellow-400 space-y-4"
+      >
+        <p>
+          <strong>Name:</strong> {result.name}
+        </p>
+        <p>
+          <strong>Date of Birth:</strong> {result.dob}
+        </p>
+        <p>
+          <strong>Your Question:</strong> {result.query}
+        </p>
+        <p>
+          <strong>Prediction:</strong> {result.prediction}
+        </p>
 
         {appUser?.plan === "premium" && (
           <>
             <div className="mt-6">
-              <h2 className="text-xl font-semibold text-yellow-400">🌟 Life Path Summary</h2>
-              <p className="text-gray-300">You are on a journey influenced by the stars. (Dynamic summary coming soon)</p>
+              <h2 className="text-xl font-semibold text-yellow-400">
+                🌟 Life Path Summary
+              </h2>
+              <p className="text-gray-300">
+                You are on a journey influenced by the stars. (Dynamic summary
+                coming soon)
+              </p>
             </div>
             <div className="mt-6">
-              <h2 className="text-xl font-semibold text-yellow-400">💎 Lucky Gem</h2>
-              <p className="text-gray-300">Your lucky gem is Amethyst. (More gems in full chart soon)</p>
+              <h2 className="text-xl font-semibold text-yellow-400">
+                💎 Lucky Gem
+              </h2>
+              <p className="text-gray-300">
+                Your lucky gem is Amethyst. (More gems in full chart soon)
+              </p>
             </div>
             <div className="mt-6">
-              <h2 className="text-xl font-semibold text-yellow-400">🗺️ Astro Map</h2>
-              <p className="text-gray-300">[Astro map will be visualized here in upcoming version]</p>
+              <h2 className="text-xl font-semibold text-yellow-400">
+                🗺️ Astro Map
+              </h2>
+              <p className="text-gray-300">
+                [Astro map will be visualized here in upcoming version]
+              </p>
             </div>
             <div className="mt-6">
-              <h2 className="text-xl font-semibold text-yellow-400">📩 Send to WhatsApp</h2>
+              <h2 className="text-xl font-semibold text-yellow-400">
+                📩 Send to WhatsApp
+              </h2>
               <p className="text-gray-300">Click below to share this result:</p>
               <Link
                 href={`https://wa.me/?text=${encodeURIComponent(
@@ -139,9 +184,13 @@ export default function ResultPage() {
 
       {appUser?.plan !== "premium" && (
         <div className="mt-12 border border-yellow-600 p-6 rounded-xl bg-yellow-900/20 text-center">
-          <h2 className="text-2xl font-semibold text-yellow-300 mb-2">🔓 Unlock More Insights</h2>
+          <h2 className="text-2xl font-semibold text-yellow-300 mb-2">
+            🔓 Unlock More Insights
+          </h2>
           <p className="text-yellow-100 mb-4">
-            Premium users get a <strong>Lucky Gem</strong>, <strong>Astro Map</strong>, <strong>Life Path Summary</strong> & more.
+            Premium users get a <strong>Lucky Gem</strong>,{" "}
+            <strong>Astro Map</strong>, <strong>Life Path Summary</strong> &
+            more.
           </p>
           <Link
             href="/upgrade"
