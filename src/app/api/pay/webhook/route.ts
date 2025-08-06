@@ -2,7 +2,7 @@
 
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { adminDb, adminAuth } from '@/lib/firebaseadmin'; // Corrected Path
+import { adminDb, adminAuth } from '@/lib/firebase-admin';
 import type { UserRecord } from 'firebase-admin/auth';
 
 // Define a type for the Razorpay event payload for better type safety
