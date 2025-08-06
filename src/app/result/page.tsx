@@ -6,7 +6,7 @@ import Loading from "@/components/ui/loading";
 import { useUser, AppUser } from "@/lib/hooks/useUser";
 import Link from "next/link";
 
-// Define a type for the prediction result
+// Prediction result type
 interface PredictionResult {
   name: string;
   dob: string;
@@ -14,6 +14,7 @@ interface PredictionResult {
   prediction: string;
 }
 
+// html2pdf type
 type Html2PdfFn = () => {
   from: (element: HTMLElement) => {
     set: (opt: Record<string, unknown>) => { save: () => void };
@@ -38,7 +39,6 @@ export default function ResultPage() {
         setResult(JSON.parse(stored) as PredictionResult);
       } catch (error) {
         console.error("Failed to parse prediction from localStorage", error);
-        setResult(null);
       }
     }
     setLoading(false);
@@ -48,7 +48,7 @@ export default function ResultPage() {
       const h2p = (await import("html2pdf.js")).default as Html2PdfFn;
       const { toPng: toPngFn } = await import("html-to-image");
       setHtml2Pdf(() => h2p);
-      setToPng(() => toPngFn);
+      setToPng(() => toPngFn as (node: HTMLElement, options?: unknown) => Promise<string>);
     })();
   }, []);
 
@@ -106,9 +106,7 @@ export default function ResultPage() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-12 text-white">
-      <h1 className="text-3xl font-bold mb-6 text-center text-celestial-gold">
-        🔮 Your Divine Reading
-      </h1>
+      <h1 className="text-3xl font-bold mb-6 text-center text-celestial-gold">🔮 Your Divine Reading</h1>
 
       <div
         id="result-section"
