@@ -22,12 +22,6 @@ interface RazorpayInstance {
   open: () => void;
 }
 
-declare global {
-  interface Window {
-    Razorpay: new (options: RazorpayOptions) => RazorpayInstance;
-  }
-}
-
 async function handleUpgrade(email: string) {
   const res = await fetch("/api/pay/create-order", {
     method: "POST",
@@ -57,7 +51,7 @@ async function handleUpgrade(email: string) {
     },
   };
 
-  const rzp = new window.Razorpay(options);
+  const rzp = new (window as unknown as { Razorpay: new (options: RazorpayOptions) => RazorpayInstance }).Razorpay(options);
   rzp.open();
 }
 
