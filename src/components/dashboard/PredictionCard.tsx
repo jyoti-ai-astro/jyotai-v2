@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { getFirestore, collection, getDocs, orderBy, query as firestoreQuery } from "firebase/firestore";
-import { app } from "@/lib/firebase/firebase-client";
+import { app } from "@/lib/firebase";
 import { useUser, AppUser } from "@/lib/hooks/useUser";
 import Link from "next/link";
 
