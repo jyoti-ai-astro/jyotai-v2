@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { getFirestore, collection, getDocs } from "firebase/firestore";
-import { app } from "@/lib/firebase-client";
+import { app } from "@/lib/firebase"; // ✅ Corrected import
 import html2pdf from "html2pdf.js";
 import { toPng } from "html-to-image";
 
@@ -42,12 +42,15 @@ export default function UserHistory() {
     const element = hiddenPDFRefs.current.get(id);
     if (!element) return;
 
-    html2pdf().from(element).set({
-      margin: 0.5,
-      filename: `jyotai-reading-${id}.pdf`,
-      html2canvas: { scale: 2 },
-      jsPDF: { unit: "in", format: "letter", orientation: "portrait" },
-    }).save();
+    html2pdf()
+      .from(element)
+      .set({
+        margin: 0.5,
+        filename: `jyotai-reading-${id}.pdf`,
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: "in", format: "letter", orientation: "portrait" },
+      })
+      .save();
   };
 
   const downloadImage = async (id: string) => {
@@ -73,7 +76,10 @@ export default function UserHistory() {
         <p className="text-center text-muted">No past predictions found.</p>
       ) : (
         predictions.map((p) => (
-          <div key={p.id} className="border border-yellow-500 bg-white/5 p-4 rounded-xl shadow relative">
+          <div
+            key={p.id}
+            className="border border-yellow-500 bg-white/5 p-4 rounded-xl shadow relative"
+          >
             <div
               ref={(el) => {
                 if (el) imageRefs.current.set(p.id, el);
@@ -113,8 +119,12 @@ export default function UserHistory() {
             >
               <div style={{ padding: "20px", fontFamily: "serif" }}>
                 <h2 style={{ fontSize: "20px", color: "#222" }}>🔮 JyotAI Reading</h2>
-                <p><strong>Date:</strong> {new Date(p.createdAt).toLocaleString()}</p>
-                <p><strong>Query:</strong> {p.query}</p>
+                <p>
+                  <strong>Date:</strong> {new Date(p.createdAt).toLocaleString()}
+                </p>
+                <p>
+                  <strong>Query:</strong> {p.query}
+                </p>
                 <hr style={{ margin: "12px 0" }} />
                 <p>{p.prediction}</p>
               </div>
