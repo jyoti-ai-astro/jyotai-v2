@@ -83,8 +83,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true });
 
-  } catch (err: any) {
-    console.error("🔥 Prediction save error:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  } catch (err) {
+  console.error("🔥 Prediction save error:", err instanceof Error ? err.message : err);
+  return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
+
 }
