@@ -1,13 +1,12 @@
-// src/app/upgrade/page.tsx
-
 "use client";
 
 import { useUser, AppUser } from "@/lib/hooks/useUser";
 import { useEffect, useCallback } from "react";
 import Loading from "@/components/ui/loading";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
-// Define Razorpay on the window object for type safety
+// Declare Razorpay type globally
 declare global {
   interface Window {
     Razorpay: new (options: any) => { open: () => void };
@@ -26,7 +25,7 @@ async function handleUpgrade(email: string) {
     alert("Could not start payment. Please try again.");
     return;
   }
-  
+
   const { order } = await res.json();
 
   const options = {
@@ -36,14 +35,9 @@ async function handleUpgrade(email: string) {
     name: "JyotAI",
     description: "Premium Plan Upgrade",
     order_id: order.id,
-    prefill: {
-      email,
-    },
-    notes: {
-      purpose: "upgrade",
-    },
-    handler: function () {
-      // On successful payment, redirect to a confirmation page or dashboard
+    prefill: { email },
+    notes: { purpose: "upgrade" },
+    handler: () => {
       window.location.href = "/dashboard?upgraded=true";
     },
   };
@@ -56,11 +50,10 @@ export default function UpgradePage() {
   const { user, loading } = useUser();
   const router = useRouter();
 
-  // Memoize the Razorpay script loader
   const loadScript = useCallback(() => {
     return new Promise<boolean>((resolve) => {
       if (document.querySelector("script[src='https://checkout.razorpay.com/v1/checkout.js']")) {
-        return resolve(true); // Script already loaded
+        return resolve(true);
       }
       const script = document.createElement("script");
       script.src = "https://checkout.razorpay.com/v1/checkout.js";

@@ -2,7 +2,6 @@
 
 import { useUser } from "@/lib/hooks/useUser";
 import Loading from "@/components/ui/loading";
-import PredictionCard from "@/components/dashboard/PredictionCard";
 import UpsellPrompt from "@/components/ui/UpsellPrompt";
 import Link from "next/link";
 import { useEffect, useState } from "react";
