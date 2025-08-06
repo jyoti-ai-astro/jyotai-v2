@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { adminDb, adminAuth } from "@/lib/firebase-admin";
+import { adminDb } from "@/lib/firebase-admin"; // ✅ FIXED: This import was missing
 
 export async function POST(req: Request) {
   try {
@@ -35,15 +35,15 @@ export async function POST(req: Request) {
     const predictionsRef = userRef.collection("predictions");
     const snap = await predictionsRef.get();
 
-    // Filter based on plan logic
     let eligible = true;
 
     if (user.plan === "standard") {
-      eligible = snap.size < 3;
+      eligible = snap.size < predictionLimit;
     }
 
     if (user.plan === "premium") {
       const upgradedAt = user.upgradedAt ? new Date(user.upgradedAt) : null;
+
       if (!upgradedAt) {
         return NextResponse.json({ error: "Missing upgradedAt for premium user" }, { status: 400 });
       }
@@ -58,7 +58,7 @@ export async function POST(req: Request) {
         return createdAt && new Date(createdAt) >= upgradedAt;
       });
 
-      eligible = monthlyPredictions.length < 20;
+      eligible = monthlyPredictions.length < predictionLimit;
     }
 
     if (!eligible) {
