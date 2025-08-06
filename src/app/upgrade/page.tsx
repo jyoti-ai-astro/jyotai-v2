@@ -6,10 +6,21 @@ import Loading from "@/components/ui/loading";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-// Declare Razorpay type globally
+interface RazorpayOptions {
+  key: string;
+  amount: number;
+  currency: string;
+  name: string;
+  description: string;
+  order_id: string;
+  prefill: { email?: string };
+  notes?: Record<string, string>;
+  handler: () => void;
+}
+
 declare global {
   interface Window {
-    Razorpay: new (options: any) => { open: () => void };
+    Razorpay: new (options: RazorpayOptions) => { open: () => void };
   }
 }
 
@@ -28,8 +39,8 @@ async function handleUpgrade(email: string) {
 
   const { order } = await res.json();
 
-  const options = {
-    key: process.env.NEXT_PUBLIC_RAZORPAY_KEY,
+  const options: RazorpayOptions = {
+    key: process.env.NEXT_PUBLIC_RAZORPAY_KEY!,
     amount: order.amount,
     currency: order.currency,
     name: "JyotAI",
