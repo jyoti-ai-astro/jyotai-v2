@@ -12,11 +12,14 @@ const firebaseConfig = {
   projectId: "jyotai-v2-prod",
   storageBucket: "jyotai-v2-prod.firebasestorage.app",
   messagingSenderId: "844576794256",
-  appId: "1:844576794256:web:2773b1f7d354a9cff05a15"
+  appId: "1:844576794256:web:2773b1f7d354a9cff05a15",
 };
 
+// Initialize app
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
+// Export everything needed
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+export { app }; // ✅ This fixes the compile error
