@@ -6,6 +6,7 @@ import Loading from "@/components/ui/loading";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
+// Razorpay interface only (no global declaration)
 interface RazorpayOptions {
   key: string;
   amount: number;
@@ -18,10 +19,8 @@ interface RazorpayOptions {
   handler: () => void;
 }
 
-declare global {
-  interface Window {
-    Razorpay: new (options: RazorpayOptions) => { open: () => void };
-  }
+interface RazorpayInstance {
+  open: () => void;
 }
 
 async function handleUpgrade(email: string) {
@@ -53,7 +52,7 @@ async function handleUpgrade(email: string) {
     },
   };
 
-  const rzp = new window.Razorpay(options);
+  const rzp = new (window as any).Razorpay(options) as RazorpayInstance;
   rzp.open();
 }
 
