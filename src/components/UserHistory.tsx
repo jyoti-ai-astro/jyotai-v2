@@ -74,7 +74,12 @@ export default function UserHistory() {
       ) : (
         predictions.map((p) => (
           <div key={p.id} className="border border-yellow-500 bg-white/5 p-4 rounded-xl shadow relative">
-            <div ref={(el) => el && imageRefs.current.set(p.id, el)} className="bg-gradient-to-br from-black to-gray-800 text-white p-4 rounded-lg">
+            <div
+              ref={(el) => {
+                if (el) imageRefs.current.set(p.id, el);
+              }}
+              className="bg-gradient-to-br from-black to-gray-800 text-white p-4 rounded-lg"
+            >
               <p className="text-yellow-300 text-sm font-semibold">
                 {new Date(p.createdAt).toLocaleString()}
               </p>
@@ -101,7 +106,9 @@ export default function UserHistory() {
 
             {/* Hidden full content for PDF only */}
             <div
-              ref={(el) => el && hiddenPDFRefs.current.set(p.id, el)}
+              ref={(el) => {
+                if (el) hiddenPDFRefs.current.set(p.id, el);
+              }}
               style={{ display: "none" }}
             >
               <div style={{ padding: "20px", fontFamily: "serif" }}>
