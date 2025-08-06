@@ -1,5 +1,7 @@
+// src/app/api/on-prediction/route.ts
+
 import { NextResponse } from "next/server";
-import { adminDb } from "@/lib/firebase-admin"; // ✅ FIXED: This import was missing
+import { adminDb } from "@/lib/firebase-admin";
 
 export async function POST(req: Request) {
   try {
@@ -18,11 +20,16 @@ export async function POST(req: Request) {
     }
 
     const user = userSnap.data();
-    const now = new Date();
 
-    // Limit enforcement logic
+    // ✅ Type safety: check if user and user.plan exist
+    if (!user || !user.plan) {
+      return NextResponse.json({ error: "Invalid or missing user data" }, { status: 403 });
+    }
+
+    const now = new Date();
     let predictionLimit = 0;
 
+    // Determine prediction limits based on plan
     if (user.plan === "standard") {
       predictionLimit = 3;
     } else if (user.plan === "premium") {
@@ -31,7 +38,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid plan type" }, { status: 403 });
     }
 
-    // Fetch predictions from Firestore
+    // Fetch all previous predictions
     const predictionsRef = userRef.collection("predictions");
     const snap = await predictionsRef.get();
 
@@ -65,7 +72,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Prediction limit exceeded" }, { status: 403 });
     }
 
-    // Save prediction
+    // Save the new prediction
     await predictionsRef.add({
       name,
       dob,
@@ -76,7 +83,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true });
 
-  } catch (err) {
+  } catch (err: any) {
     console.error("🔥 Prediction save error:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
