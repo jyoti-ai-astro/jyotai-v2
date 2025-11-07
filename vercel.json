@@ -5,5 +5,11 @@
     }
   },
   "installCommand": "npm install",
-  "buildCommand": "npm run build"
+  "buildCommand": "npm run build",
+  "crons": [
+    {
+      "path": "/api/cron/ping-brain",
+      "schedule": "*/5 * * * *"
+    }
+  ]
 }
