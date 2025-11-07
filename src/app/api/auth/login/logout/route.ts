@@ -1,15 +1,19 @@
-import { NextResponse } from 'next/server';
+// src/app/api/auth/login/logout/route.ts
+import { NextResponse } from "next/server";
+
+// Node runtime
+export const runtime = "nodejs";
 
 export async function POST() {
-  const options = {
-    name: 'session',
-    value: '',
-    maxAge: -1, // Expire the cookie immediately
+  const res = NextResponse.json({ status: "success" });
+  res.cookies.set({
+    name: "session",
+    value: "",
     httpOnly: true,
     secure: true,
-  };
-
-  const response = NextResponse.json({ status: 'success' });
-  response.cookies.set(options);
-  return response;
+    maxAge: 0, // expire immediately
+    path: "/",
+    sameSite: "lax",
+  });
+  return res;
 }

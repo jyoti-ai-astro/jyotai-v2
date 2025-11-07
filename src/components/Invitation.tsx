@@ -29,6 +29,7 @@ export function Invitation({ onBegin }: InvitationProps) {
         onClick={onBegin}
         className="bg-celestial-gold text-cosmic-navy font-bold py-4 px-10 rounded-lg text-xl shadow-lg"
         style={{ color: '#0d1117', backgroundColor: '#FFD700' }}
+        aria-label="Begin your journey"
       >
         Begin Your Journey
       </motion.button>

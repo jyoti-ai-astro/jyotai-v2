@@ -1,67 +1,101 @@
-import { NextResponse } from 'next/server';
-import { adminDb, adminAuth } from '@/lib/firebase-admin';
-import admin from 'firebase-admin';
-import { randomBytes } from 'crypto';
-import nodemailer from 'nodemailer';
+// src/app/api/on-payment-success/route.ts
+import { NextResponse } from "next/server";
+import admin from "firebase-admin";
+import { randomBytes } from "crypto";
+import { adminDb, adminAuth } from "@/lib/firebase-admin";
+import { sendZepto } from "@/lib/email/zepto";
+import { predictionEmailHTML } from "@/lib/email/templates";
+
+export const runtime = "nodejs";
+
+type AnyObject = Record<string, any>;
+function yyyymm(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
 
 export async function POST(req: Request) {
   try {
-    const { userEmail, paymentId, orderId, name, dob, query, prediction } = await req.json();
-    const normalizedEmail = userEmail.trim().toLowerCase();
+    const body = await req.json().catch(() => ({}));
+    const {
+      userEmail,
+      paymentId = "",
+      orderId = "",
+      name = "",
+      dob = "",
+      query = "",
+      prediction = "",
+    } = body as AnyObject;
 
-    const user = await adminAuth.getUserByEmail(normalizedEmail).catch(async (error) => {
-      if (error.code === 'auth/user-not-found') {
-        return await adminAuth.createUser({
-          email: normalizedEmail,
-          displayName: name,
-          emailVerified: true,
-        });
-      }
-      throw error;
-    });
+    const email = String(userEmail || "").trim().toLowerCase();
+    if (!email) {
+      return NextResponse.json({ error: "userEmail is required" }, { status: 400 });
+    }
 
-    const userRef = adminDb.collection('users').doc(user.uid);
-    const userDoc = await userRef.get();
+    // --- 1) Ensure Auth user exists
+    const userRecord =
+      (await adminAuth.getUserByEmail(email).catch(async (e: any) => {
+        if (e?.code === "auth/user-not-found") {
+          return await adminAuth.createUser({
+            email,
+            displayName: name || undefined,
+            emailVerified: true,
+          });
+        }
+        throw e;
+      })) || (await adminAuth.getUserByEmail(email));
 
-    if (!userDoc.exists) {
+    const uid = userRecord.uid;
+
+    // --- 2) Ensure base Firestore doc
+    const userRef = adminDb.collection("users").doc(uid);
+    const userSnap = await userRef.get();
+
+    if (!userSnap.exists) {
       await userRef.set({
-        email: normalizedEmail,
-        name,
-        plan: 'standard',
+        email,
+        name: name || "",
+        plan: "standard",
         createdAt: new Date().toISOString(),
         credits: 3,
+        referralCode: randomBytes(4).toString("hex").toUpperCase(),
       });
     }
 
-    const userData = userDoc.exists ? userDoc.data() : { credits: 3, plan: 'standard' };
-    const plan = userData?.plan || 'standard';
+    const userData = (await userRef.get()).data() as AnyObject;
+    const plan: "standard" | "premium" = (userData?.plan as any) || "standard";
 
-    // LIMIT LOGIC
-    if (plan === 'standard' && userData?.credits <= 0) {
-      return NextResponse.json(
-        { error: 'Prediction limit reached for Standard plan.' },
-        { status: 403 }
-      );
-    }
-
-    if (plan === 'premium') {
-      const snapshot = await userRef.collection('predictions').get();
-      const predictionsThisMonth = snapshot.docs.filter((doc) => {
-        const created = doc.data().createdAt;
-        return created && new Date(created).getMonth() === new Date().getMonth();
-      });
-
-      if (predictionsThisMonth.length >= 20) {
+    // --- 3) LIMIT LOGIC
+    if (plan === "standard") {
+      const remaining = Number(userData?.credits ?? 0);
+      if (remaining <= 0) {
         return NextResponse.json(
-          { error: 'Monthly prediction limit reached for Premium plan.' },
+          { error: "Prediction limit reached for Standard plan." },
+          { status: 403 }
+        );
+      }
+    } else {
+      // Premium monthly quota kept in users.quota
+      const nowMonth = yyyymm();
+      const quota: AnyObject = userData?.quota || { month: nowMonth, monthly_limit: 20, used: 0 };
+
+      // If month rolled over, reset
+      if (quota.month !== nowMonth) {
+        quota.month = nowMonth;
+        quota.used = 0;
+        quota.monthly_limit = 20;
+      }
+
+      if (Number(quota.used) >= Number(quota.monthly_limit)) {
+        return NextResponse.json(
+          { error: "Monthly prediction limit reached for Premium plan." },
           { status: 403 }
         );
       }
     }
 
-    // ✅ SAVE prediction
-    const predictionId = `pred_${randomBytes(12).toString('hex')}`;
-    await userRef.collection('predictions').doc(predictionId).set({
+    // --- 4) Save prediction (subcollection)
+    const predId = `pred_${randomBytes(12).toString("hex")}`;
+    await userRef.collection("predictions").doc(predId).set({
       query,
       prediction,
       dob,
@@ -70,52 +104,58 @@ export async function POST(req: Request) {
       createdAt: new Date().toISOString(),
     });
 
-    // 🔻 Decrement credit (Standard only)
-    if (plan === 'standard') {
+    // --- 5) Update counters
+    if (plan === "standard") {
       await userRef.update({
         credits: admin.firestore.FieldValue.increment(-1),
         lastPredictionAt: new Date().toISOString(),
       });
+    } else {
+      const nowMonth = yyyymm();
+      await userRef.set(
+        {
+          quota: admin.firestore.FieldValue.arrayRemove(null), // no-op to force merge type
+        },
+        { merge: true }
+      );
+      // read latest, then set merged quota
+      const latest = (await userRef.get()).data() as AnyObject;
+      const q = latest?.quota || { month: nowMonth, monthly_limit: 20, used: 0 };
+      if (q.month !== nowMonth) {
+        q.month = nowMonth;
+        q.used = 0;
+        q.monthly_limit = 20;
+      }
+      q.used = Number(q.used || 0) + 1;
+      await userRef.set({ quota: q }, { merge: true });
     }
 
-    // 🔗 Generate magic link
-    const link = await adminAuth.generateSignInWithEmailLink(normalizedEmail, {
-      url: `${process.env.NEXT_PUBLIC_BASE_URL}/api/auth/callback`,
+    // --- 6) Magic link (to /login)
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://jyotai-v2.vercel.app";
+    const magicLink = await adminAuth.generateSignInWithEmailLink(email, {
+      url: `${baseUrl}/login`,
+      handleCodeInApp: true,
     });
 
-    // ✉️ Email via ZeptoMail
-    const transporter = nodemailer.createTransport({
-      host: "smtp.zeptomail.in",
-      port: 587,
-      auth: {
-        user: "emailapikey",
-        pass: process.env.ZEPTO_MAIL_TOKEN as string,
-      },
+    // --- 7) Email via ZeptoMail
+    const html = predictionEmailHTML({
+      name,
+      link: magicLink,
+      query,
+      dob,
+      prediction,
     });
 
-    await transporter.sendMail({
-      from: `"Brahmin GPT from JyotAI" <oracle@jyoti.app>`,
-      to: normalizedEmail,
-      subject: "🔮 Your Divine Reading & Sacred Access Link",
-      html: `
-        <div style="font-family: serif; line-height: 1.7;">
-          <h1>🪔 Greetings, Seeker ${name}</h1>
-          <p>The cosmos has spoken. Your divine prediction has been recorded in our sacred archives.</p>
-          <p><strong>Click the sacred link below to enter your personal portal and view your history at any time:</strong></p>
-          <p><a href="${link}" style="color: #FFD700; font-weight: bold;">Enter Your Divine Portal</a></p>
-          <p>This link is your personal key. It is valid for one use.</p>
-          <br/>
-          <p>🕉️ With divine blessings,<br/><strong>The JyotAI Team</strong></p>
-        </div>
-      `,
+    await sendZepto({
+      to: email,
+      subject: "🔮 Your Divine Reading & Portal Access",
+      html,
+      fromName: "Brahmin GPT · JyotAI",
     });
 
     return NextResponse.json({ status: "✅ Email sent successfully!" });
   } catch (err) {
-    console.error("🔥 Error in on-payment-success:", err);
-    return NextResponse.json(
-      { error: "Failed to process payment webhook." },
-      { status: 500 }
-    );
+    console.error("🔥 Error in on-payment-success:", (err as any)?.stack || err);
+    return NextResponse.json({ error: "Failed to process payment." }, { status: 500 });
   }
 }

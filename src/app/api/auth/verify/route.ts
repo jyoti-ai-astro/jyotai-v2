@@ -1,23 +1,39 @@
 // src/app/api/auth/verify/route.ts
-import { NextResponse } from 'next/server';
-import { adminAuth } from '@/lib/firebase-admin'; // Must be Edge-safe import
+import { NextRequest, NextResponse } from 'next/server';
+import { adminAuth } from '@/lib/firebase-admin';
 
-export async function POST(req: Request) {
+// ✅ firebase-admin is NOT Edge-compatible
+export const runtime = 'nodejs';
+
+export async function POST(req: NextRequest) {
   try {
-    const { sessionCookie } = await req.json();
+    let { sessionCookie, idToken } = await req.json().catch(() => ({}));
 
-    if (!sessionCookie) {
-      return NextResponse.json({ ok: false });
+    // If nothing sent in body, try to pull session cookie directly
+    if (!sessionCookie && !idToken) {
+      const autoCookie = req.cookies.get('session')?.value;
+      if (!autoCookie) {
+        return NextResponse.json({ ok: false, error: 'No token provided' }, { status: 400 });
+      }
+      sessionCookie = autoCookie;
     }
 
-    const decodedClaims = await adminAuth.verifySessionCookie(sessionCookie, true);
+    // Prefer session cookie (middleware/SSR), fallback to idToken (client check)
+    const decoded = sessionCookie
+      ? await adminAuth.verifySessionCookie(sessionCookie, true)
+      : await adminAuth.verifyIdToken(idToken as string, true);
 
     return NextResponse.json({
       ok: true,
-      isAdmin: decodedClaims.isAdmin === true,
+      isAdmin: decoded.isAdmin === true,
     });
   } catch (err) {
     console.error('❌ API Verify Error:', err);
-    return NextResponse.json({ ok: false });
+    return NextResponse.json({ ok: false }, { status: 401 });
   }
+}
+
+// Optional: reject non-POST
+export async function GET() {
+  return NextResponse.json({ ok: false, error: 'Method not allowed' }, { status: 405 });
 }

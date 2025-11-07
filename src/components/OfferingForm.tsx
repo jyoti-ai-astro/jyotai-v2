@@ -4,12 +4,14 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PaymentButton } from "./PaymentButton";
 import { DayPicker } from "react-day-picker";
+import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import "react-day-picker/dist/style.css";
 
 type FormStep = "NAME" | "DOB" | "QUERY" | "EMAIL" | "REFLECTION" | "CONVERGENCE";
 
 export function OfferingForm() {
   const [step, setStep] = useState<FormStep>("NAME");
+  const [error, setError] = useState<string | null>(null);
 
   const [userData, setUserData] = useState({
     name: "",
@@ -19,20 +21,30 @@ export function OfferingForm() {
   });
 
   const nextStep = () => {
+    setError(null);
     switch (step) {
       case "NAME":
-        if (!userData.name) return alert("Please enter your name.");
+        if (!userData.name.trim()) {
+          setError("Please enter your name.");
+          return;
+        }
         setStep("DOB");
         break;
       case "DOB":
         setStep("QUERY");
         break;
       case "QUERY":
-        if (!userData.query) return alert("Enter your divine question.");
+        if (!userData.query.trim()) {
+          setError("Enter your divine question.");
+          return;
+        }
         setStep("EMAIL");
         break;
       case "EMAIL":
-        if (!userData.email.includes('@')) return alert("Please enter a valid email.");
+        if (!userData.email.includes('@') || !userData.email.includes('.')) {
+          setError("Please enter a valid email address.");
+          return;
+        }
         setStep("REFLECTION");
         break;
       case "REFLECTION":
@@ -49,6 +61,7 @@ export function OfferingForm() {
 
   return (
     <div className="w-full max-w-md mx-auto px-4">
+      {error && <ErrorMessage message={error} onClose={() => setError(null)} />}
       <AnimatePresence mode="wait">
         {step === "NAME" && (
           <motion.div key="name" {...cardVariants} className="space-y-6">
@@ -59,12 +72,18 @@ export function OfferingForm() {
               type="text"
               value={userData.name}
               onChange={(e) => setUserData({ ...userData, name: e.target.value })}
-              className="w-full p-4 bg-gray-800 border border-gray-700 rounded-md focus:ring-2 focus:ring-yellow-400 focus:outline-none"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") nextStep();
+              }}
+              className="w-full p-4 bg-gray-800 border border-gray-700 rounded-md focus:ring-2 focus:ring-yellow-400 focus:outline-none text-white"
               placeholder="Your Name"
+              aria-label="Your name"
+              required
             />
             <button
               onClick={nextStep}
               className="w-full font-bold py-3 px-8 rounded-lg bg-yellow-400 text-black hover:bg-yellow-300 transition"
+              aria-label="Continue to next step"
             >
               Next →
             </button>
@@ -103,12 +122,15 @@ export function OfferingForm() {
               value={userData.query}
               onChange={(e) => setUserData({ ...userData, query: e.target.value })}
               rows={4}
-              className="w-full p-4 bg-gray-800 border border-gray-700 rounded-md focus:ring-2 focus:ring-yellow-400 focus:outline-none"
+              className="w-full p-4 bg-gray-800 border border-gray-700 rounded-md focus:ring-2 focus:ring-yellow-400 focus:outline-none text-white"
               placeholder="E.g. When will I find true love?"
+              aria-label="Your divine question"
+              required
             />
             <button
               onClick={nextStep}
               className="w-full font-bold py-3 px-8 rounded-lg bg-yellow-400 text-black hover:bg-yellow-300 transition"
+              aria-label="Continue to next step"
             >
               Next →
             </button>
@@ -124,12 +146,18 @@ export function OfferingForm() {
               type="email"
               value={userData.email}
               onChange={(e) => setUserData({ ...userData, email: e.target.value })}
-              className="w-full p-4 bg-gray-800 border border-gray-700 rounded-md focus:ring-2 focus:ring-yellow-400 focus:outline-none"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") nextStep();
+              }}
+              className="w-full p-4 bg-gray-800 border border-gray-700 rounded-md focus:ring-2 focus:ring-yellow-400 focus:outline-none text-white"
               placeholder="Your Email Address"
+              aria-label="Your email address"
+              required
             />
             <button
               onClick={nextStep}
               className="w-full font-bold py-3 px-8 rounded-lg bg-yellow-400 text-black hover:bg-yellow-300 transition"
+              aria-label="Continue to next step"
             >
               Next →
             </button>

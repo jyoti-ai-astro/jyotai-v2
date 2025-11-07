@@ -1,88 +1,98 @@
 "use client";
 
 import { useUser, AppUser } from "@/lib/hooks/useUser";
-import { useEffect, useCallback } from "react";
 import Loading from "@/components/ui/loading";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useEffect, useCallback } from "react";
 
-interface RazorpayOptions {
+type RazorpayOptions = {
   key: string;
   amount: number;
   currency: string;
   name: string;
   description: string;
   order_id: string;
-  prefill: { email?: string };
+  prefill?: { email?: string; name?: string; contact?: string };
   notes?: Record<string, string>;
   handler: () => void;
+  theme?: { color?: string };
+};
+
+type RazorpayInstance = { open: () => void };
+
+declare global {
+  interface Window {
+    Razorpay?: new (options: RazorpayOptions) => RazorpayInstance;
+  }
 }
 
-interface RazorpayInstance {
-  open: () => void;
-}
-
-async function handleUpgrade(email: string) {
+async function createOrder(params: { amount: number; email: string; purpose: string; name?: string }) {
   const res = await fetch("/api/pay/create-order", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ amount: 99900, email, purpose: "upgrade" }),
+    body: JSON.stringify(params),
   });
-
-  if (!res.ok) {
-    console.error("Failed to create Razorpay order");
-    alert("Could not start payment. Please try again.");
-    return;
-  }
-
-  const { order } = await res.json();
-
-  const options: RazorpayOptions = {
-    key: process.env.NEXT_PUBLIC_RAZORPAY_KEY!,
-    amount: order.amount,
-    currency: order.currency,
-    name: "JyotAI",
-    description: "Premium Plan Upgrade",
-    order_id: order.id,
-    prefill: { email },
-    notes: { purpose: "upgrade" },
-    handler: () => {
-      window.location.href = "/dashboard?upgraded=true";
-    },
-  };
-
-  const rzp = new (window as unknown as { Razorpay: new (options: RazorpayOptions) => RazorpayInstance }).Razorpay(options);
-  rzp.open();
+  if (!res.ok) throw new Error("Failed to create Razorpay order");
+  return res.json() as Promise<{ order: { id: string; amount: number; currency: string } }>;
 }
 
 export default function UpgradePage() {
   const { user, loading } = useUser();
-  const router = useRouter();
 
-  const loadScript = useCallback(() => {
-    return new Promise<boolean>((resolve) => {
-      if (document.querySelector("script[src='https://checkout.razorpay.com/v1/checkout.js']")) {
-        return resolve(true);
+  const loadRazorpay = useCallback(() => {
+    return new Promise<void>((resolve, reject) => {
+      if (window.Razorpay) return resolve();
+      const existing = document.querySelector<HTMLScriptElement>(
+        "script[src='https://checkout.razorpay.com/v1/checkout.js']"
+      );
+      if (existing) {
+        existing.onload = () => resolve();
+        existing.onerror = () => reject(new Error("Razorpay SDK failed to load"));
+        return;
       }
-      const script = document.createElement("script");
-      script.src = "https://checkout.razorpay.com/v1/checkout.js";
-      script.onload = () => resolve(true);
-      script.onerror = () => {
-        console.error("Razorpay script failed to load");
-        resolve(false);
-      };
-      document.body.appendChild(script);
+      const s = document.createElement("script");
+      s.src = "https://checkout.razorpay.com/v1/checkout.js";
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error("Razorpay SDK failed to load"));
+      document.body.appendChild(s);
     });
   }, []);
 
-  useEffect(() => {
-    loadScript();
+  const startUpgrade = useCallback(
+    async (email: string, name?: string) => {
+      try {
+        await loadRazorpay();
+        const { order } = await createOrder({ amount: 99900, email, purpose: "upgrade", name });
 
-    const appUser = user as AppUser | null;
-    if (!loading && appUser?.plan === "premium") {
-      router.push("/dashboard");
-    }
-  }, [user, loading, router, loadScript]);
+        if (!window.Razorpay) throw new Error("Razorpay SDK unavailable");
+
+        const rzp = new window.Razorpay({
+          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "",
+          amount: order.amount,
+          currency: order.currency,
+          name: "JyotAI Premium",
+          description: "Monthly subscription",
+          order_id: order.id,
+          prefill: { email, name, contact: "9999999999" },
+          notes: { purpose: "upgrade", email, name: name || "" },
+          theme: { color: "#D4AF37" },
+          handler: () => {
+            // Webhook upgrades plan + credits; we just inform and refresh later.
+            window.location.href = "/dashboard?upgraded=true";
+          },
+        });
+        rzp.open();
+      } catch (e: any) {
+        alert(e?.message || "Could not start payment. Please try again.");
+      }
+    },
+    [loadRazorpay]
+  );
+
+  useEffect(() => {
+    // pre-load SDK
+    loadRazorpay();
+  }, [loadRazorpay]);
 
   if (loading) return <Loading />;
 
@@ -102,7 +112,7 @@ export default function UpgradePage() {
   return (
     <div className="max-w-2xl mx-auto px-6 py-12 text-white">
       <h1 className="text-3xl font-bold mb-6 text-yellow-400 text-center">🌟 Unlock Premium Access</h1>
-      <p className="text-center text-gray-300 mb-8">Gain unlimited insights and deeper cosmic guidance.</p>
+      <p className="text-center text-gray-300 mb-8">Gain deeper cosmic guidance and monthly benefits.</p>
 
       <div className="bg-slate-800 p-8 rounded-lg">
         <ul className="list-disc list-inside mb-6 space-y-2">
@@ -115,13 +125,15 @@ export default function UpgradePage() {
         </ul>
 
         <button
-          onClick={() => handleUpgrade(appUser.email!)}
+          onClick={() => startUpgrade(appUser.email!, appUser.name)}
           className="bg-yellow-400 hover:bg-yellow-500 text-black font-bold py-3 px-6 rounded-xl transition duration-200 w-full text-lg"
         >
           🚀 Upgrade to Premium – ₹999/month
         </button>
 
-        <p className="text-xs text-gray-400 mt-4 text-center">This is a one-time payment for 30 days of access.</p>
+        <p className="text-xs text-gray-400 mt-4 text-center">
+          Payment is captured by Razorpay; your plan updates automatically via webhook.
+        </p>
       </div>
     </div>
   );

@@ -13,6 +13,7 @@ export interface AppUser {
   plan?: "standard" | "premium";
   credits?: number;
   referralCode?: string;
+  isAdmin?: boolean;
 }
 
 export function useUser() {
@@ -22,10 +23,19 @@ export function useUser() {
   useEffect(() => {
     const auth = getAuth(app);
 
-    const authUnsubscribe = onAuthStateChanged(auth, (firebaseUser: FirebaseUser | null) => {
+    const authUnsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
       if (firebaseUser) {
         const db = getFirestore(app);
         const userDocRef = doc(db, "users", firebaseUser.uid);
+
+        // Get isAdmin from Firebase Auth token claims
+        let isAdmin = false;
+        try {
+          const idTokenResult = await firebaseUser.getIdTokenResult();
+          isAdmin = idTokenResult.claims.isAdmin === true;
+        } catch (error) {
+          console.error("Failed to get token claims:", error);
+        }
 
         const firestoreUnsubscribe = onSnapshot(
           userDocRef,
@@ -39,11 +49,13 @@ export function useUser() {
                 plan: firestoreData.plan,
                 credits: firestoreData.credits,
                 referralCode: firestoreData.referralCode,
+                isAdmin,
               });
             } else {
               setUser({
                 uid: firebaseUser.uid,
                 email: firebaseUser.email,
+                isAdmin,
               });
             }
             setLoading(false);

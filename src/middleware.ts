@@ -1,40 +1,50 @@
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
+/**
+ * Edge Runtime-safe middleware.
+ * - Only runs on `/admin/*` routes
+ * - Checks for `session` cookie (standardized)
+ * - Delegates verification to `/api/auth/verify` (Node runtime)
+ */
 export async function middleware(req: NextRequest) {
-  const sessionCookie = req.cookies.get('__session')?.value;
+  const { pathname } = req.nextUrl;
 
-  if (!req.nextUrl.pathname.startsWith('/admin')) {
+  if (!pathname.startsWith("/admin")) {
     return NextResponse.next();
   }
 
+  const sessionCookie = req.cookies.get("session")?.value;
   if (!sessionCookie) {
-    return NextResponse.redirect(new URL('/login', req.url));
+    return NextResponse.redirect(new URL("/login", req.url));
   }
 
   try {
-    const verifyRes = await fetch(`${req.nextUrl.origin}/api/auth/verify`, {
-      method: 'POST',
+    const verifyURL = new URL("/api/auth/verify", req.url);
+    const response = await fetch(verifyURL, {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        Cookie: `__session=${sessionCookie}`,
+        "Content-Type": "application/json",
+        cookie: req.headers.get("cookie") || "",
       },
-      body: JSON.stringify({ sessionCookie }),
+      body: JSON.stringify({}),
     });
 
-    const result = await verifyRes.json();
+    if (!response.ok) {
+      return NextResponse.redirect(new URL("/login", req.url));
+    }
 
-    if (!result.ok || !result.isAdmin) {
-      return NextResponse.redirect(new URL('/login', req.url));
+    const result = await response.json();
+    if (!result.ok || result.isAdmin !== true) {
+      return NextResponse.redirect(new URL("/login", req.url));
     }
 
     return NextResponse.next();
-  } catch (error) {
-    console.error('🔥 Middleware fetch error:', error);
-    return NextResponse.redirect(new URL('/login', req.url));
+  } catch (err) {
+    console.error("🔥 Middleware error:", err);
+    return NextResponse.redirect(new URL("/login", req.url));
   }
 }
 
 export const config = {
-  matcher: ['/admin/:path*'],
+  matcher: ["/admin/:path*"],
 };
