@@ -11,6 +11,14 @@ function yyyymm(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
+/**
+ * Health/sanity endpoint so GETs don’t appear as 405 in Vercel logs.
+ * Razorpay will POST; this is only for us and uptime pings.
+ */
+export async function GET() {
+  return NextResponse.json({ ok: true, expects: "POST (Razorpay)" });
+}
+
 export async function POST(req: Request) {
   try {
     // --- 1) Verify webhook signature (raw body required) ---
@@ -28,13 +36,22 @@ export async function POST(req: Request) {
 
     const eventIdHeader = req.headers.get("x-razorpay-event-id") || "";
     const payload: AnyObject = JSON.parse(rawBody);
-    const eventType: string = payload?.event || "";
+    const eventType: string = payload?.event || "unknown";
 
-    // Record *all* events once for traceability
+    // Use event id (preferred) → fallback to payload id → fallback to timestamp
     const auditId = eventIdHeader || String(payload?.id || `evt_${Date.now()}`);
-    await adminDb.collection("razorpay_events").doc(auditId).set(
+    const auditRef = adminDb.collection("razorpay_events").doc(auditId);
+
+    // Idempotency: if we've already processed this event, short-circuit.
+    const existingAudit = await auditRef.get();
+    if (existingAudit.exists && existingAudit.get("processedAt")) {
+      return NextResponse.json({ status: "ok", duplicate_event: true });
+    }
+
+    // Record the event (merged) for traceability
+    await auditRef.set(
       {
-        event: eventType || "unknown",
+        event: eventType,
         payloadSnippet: {
           id: payload?.id,
           created_at: payload?.created_at,
@@ -45,9 +62,9 @@ export async function POST(req: Request) {
       { merge: true }
     );
 
-    // Ignore anything except payment.captured (but respond 200)
+    // Ignore anything except payment.captured (but still return 200)
     if (eventType !== "payment.captured") {
-      await adminDb.collection("razorpay_events").doc(auditId).update({ ignored: true });
+      await auditRef.update({ ignored: true });
       return NextResponse.json({ status: "ignored", event: eventType });
     }
 
@@ -59,15 +76,15 @@ export async function POST(req: Request) {
     const orderId = order?.id || payment?.order_id || "";
 
     if (!paymentId) {
-      await adminDb.collection("razorpay_events").doc(auditId).update({ error: "missing_payment_id" });
+      await auditRef.update({ error: "missing_payment_id" });
       return NextResponse.json({ error: "Missing payment id" }, { status: 400 });
     }
 
-    // Idempotency: if we already processed this payment, return OK
+    // Idempotency by payment id as well
     const paymentsRef = adminDb.collection("payments").doc(paymentId);
     const paymentsSnap = await paymentsRef.get();
     if (paymentsSnap.exists) {
-      await adminDb.collection("razorpay_events").doc(auditId).update({ duplicate: true });
+      await auditRef.update({ duplicate: true, duplicate_by: "paymentId" });
       return NextResponse.json({ status: "ok", duplicate: true });
     }
 
@@ -100,12 +117,12 @@ export async function POST(req: Request) {
       "";
 
     if (!email) {
-      await adminDb.collection("razorpay_events").doc(auditId).update({ error: "missing_email" });
+      await auditRef.update({ error: "missing_email" });
       return NextResponse.json({ error: "Missing buyer email" }, { status: 400 });
     }
 
     if ((payment?.status || "") !== "captured") {
-      await adminDb.collection("razorpay_events").doc(auditId).update({ ignored: true, reason: "not_captured" });
+      await auditRef.update({ ignored: true, reason: "not_captured" });
       return NextResponse.json({ status: "ignored" });
     }
 
@@ -219,7 +236,7 @@ export async function POST(req: Request) {
     });
 
     // Mark processed
-    await adminDb.collection("razorpay_events").doc(auditId).update({
+    await auditRef.update({
       processedAt: admin.firestore.FieldValue.serverTimestamp(),
       paymentId,
       userUid: uid,
