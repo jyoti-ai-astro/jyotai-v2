@@ -1,16 +1,22 @@
 // src/app/dashboard/page.tsx
 "use client";
-export const dynamic = 'force-dynamic';
+
+// ✅ Next.js flags for client-only, dynamic rendering
+export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { SuccessMessage } from "@/components/ui/ErrorMessage";
 
+import { SuccessMessage } from "@/components/ui/ErrorMessage";
 import { useUser } from "@/lib/hooks/useUser";
 import Loading from "@/components/ui/loading";
 import UpsellPrompt from "@/components/ui/UpsellPrompt";
+import DownloadPdfButton from "@/components/DownloadPdfButton";
+import ShareImageButton from "@/components/ShareImageButton";
+import LimitsBanner from "@/components/dashboard/LimitsBanner";
+import PredictionsSkeleton from "@/components/dashboard/PredictionsSkeleton";
 
 import {
   getFirestore,
@@ -20,12 +26,6 @@ import {
   getDoc,
 } from "firebase/firestore";
 import { app } from "@/lib/firebase-client";
-
-import DownloadPdfButton from "@/components/DownloadPdfButton";
-import ShareImageButton from "@/components/ShareImageButton";
-import LimitsBanner from "@/components/dashboard/LimitsBanner";
-// If you created it; otherwise this import won’t break (we guard usage below)
-import PredictionsSkeleton from "@/components/dashboard/PredictionsSkeleton";
 
 interface Prediction {
   id: string;
@@ -58,7 +58,7 @@ export default function DashboardPage() {
 
   const [referralCode, setReferralCode] = useState("");
   const [referredBy, setReferredBy] = useState("");
-  const [copySuccess, setCopySuccess] = useState(false); // ← keep only this one
+  const [copySuccess, setCopySuccess] = useState(false);
 
   const search = useSearchParams();
   const upgradedNow = search.get("upgraded") === "true";
@@ -70,20 +70,20 @@ export default function DashboardPage() {
       try {
         const db = getFirestore(app);
 
-        // user profile
+        // Fetch user profile
         const userSnap = await getDoc(doc(db, "users", user.uid));
         const u = userSnap.data() || {};
         setReferralCode(u.referralCode || "");
         setReferredBy(u.referredBy || "");
 
-        // latest predictions
+        // Fetch latest predictions
         const snap = await getDocs(collection(db, `users/${user.uid}/predictions`));
         const list = snap.docs.map((d) => ({
           id: d.id,
           ...(d.data() as Omit<Prediction, "id">),
         })) as Prediction[];
 
-        // newest first (ISO sort)
+        // Sort by newest first
         list.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
         setPredictions(list);
       } catch (e) {
@@ -138,7 +138,13 @@ export default function DashboardPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-12">
-      {copySuccess && <SuccessMessage message="🔗 Referral link copied!" onClose={() => setCopySuccess(false)} />}
+      {copySuccess && (
+        <SuccessMessage
+          message="🔗 Referral link copied!"
+          onClose={() => setCopySuccess(false)}
+        />
+      )}
+
       <div className="flex items-center justify-between gap-4 mb-4">
         <h1 className="text-3xl text-white font-bold">📜 Your Predictions</h1>
         <Link href="/dashboard/predictions" className="text-yellow-300 underline hover:text-white">
@@ -146,17 +152,14 @@ export default function DashboardPage() {
         </Link>
       </div>
 
-      {/* Upgrade success note */}
       {upgradedNow && (
         <div className="mb-4 rounded-lg border border-emerald-700/60 bg-emerald-900/30 p-3 text-emerald-200">
           ✅ Premium activated. Enjoy deeper insights!
         </div>
       )}
 
-      {/* Plan / credits banner */}
       <LimitsBanner userId={user.uid} />
 
-      {/* Premium Meter */}
       {isPremium && (
         <div className="bg-yellow-100/10 border border-yellow-300 p-4 rounded-xl text-white mb-6">
           <h2 className="text-xl font-semibold text-yellow-400">🪔 Tip of the Day</h2>
@@ -172,7 +175,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Referral Block */}
       {referralCode && (
         <div className="bg-green-900/10 border border-green-500 text-white p-4 rounded-xl mb-6">
           <h2 className="text-xl font-semibold text-green-400">📨 Invite Friends</h2>
@@ -181,10 +183,9 @@ export default function DashboardPage() {
           </p>
           <p>They’ll get 1 free prediction. You’ll earn bonus credits when they pay.</p>
           <div className="flex gap-4 mt-3 flex-wrap">
-            <button 
-              onClick={handleCopy} 
+            <button
+              onClick={handleCopy}
               className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition"
-              aria-label="Copy referral link"
             >
               Copy Referral Link
             </button>
@@ -200,21 +201,20 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Referred By Banner */}
       {referredBy && (
         <div className="mb-6 bg-blue-900/30 border border-blue-400 p-4 rounded-lg text-blue-300">
           🎁 You were referred by <strong>{referredBy}</strong>. Spread the divine karma forward!
         </div>
       )}
 
-      {/* Upsell for Standard */}
       {!isPremium && predictions.length >= 2 && <UpsellPrompt />}
 
-      {/* Predictions */}
       {fetching ? (
-        (PredictionsSkeleton ? <PredictionsSkeleton /> : (
+        PredictionsSkeleton ? (
+          <PredictionsSkeleton />
+        ) : (
           <p className="text-gray-400">Loading divine records...</p>
-        ))
+        )
       ) : predictions.length === 0 ? (
         <div className="text-yellow-300">
           You haven’t asked anything yet.{" "}
