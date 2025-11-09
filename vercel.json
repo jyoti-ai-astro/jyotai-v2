@@ -1,0 +1,5 @@
+{
+  "crons": [
+    { "path": "/api/cron/ping-brain", "schedule": "0 6 * * *" }
+  ]
+}
