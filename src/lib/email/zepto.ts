@@ -1,16 +1,31 @@
 // src/lib/email/zepto.ts
 import { SendMailClient } from "zeptomail";
 
-const rawUrl = process.env.ZEPTO_API_URL || "https://api.zeptomail.in/";
-const url = rawUrl.startsWith("http") ? rawUrl : `https://${rawUrl}`;
+function normalizeUrl(v?: string) {
+  if (!v) return "https://api.zeptomail.in/v1.1/email";
+  let u = v.trim();
+  if (!u.startsWith("http")) u = `https://${u}`;
+  // If someone passed the base host, append version + resource
+  if (!/\/v\d+\.\d+\/email\/?$/.test(u)) {
+    u = u.replace(/\/+$/, ""); // trim trailing slash
+    if (!/\/v\d+\.\d+$/.test(u)) {
+      u = `${u}/v1.1`;
+    }
+    u = `${u}/email`;
+  }
+  return u;
+}
 
+const url = normalizeUrl(process.env.ZEPTO_API_URL);
 const zeptoToken =
   process.env.ZEPTO_API_TOKEN ||
-  process.env.ZEPTO_MAIL_TOKEN || // backward-compat
+  process.env.ZEPTO_MAIL_TOKEN ||
   "";
 
-if (!zeptoToken) {
-  console.warn("⚠️ Zepto token not set (ZEPTO_API_TOKEN/ZEPTO_MAIL_TOKEN). Emails will fail.");
+if (!zeptoToken || !zeptoToken.startsWith("Zoho-enczapikey ")) {
+  console.warn(
+    "⚠️ Invalid Zepto token. Ensure ZEPTO_API_TOKEN starts with 'Zoho-enczapikey ' and contains your key."
+  );
 }
 
 export const zepto = new SendMailClient({ url, token: zeptoToken });

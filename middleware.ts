@@ -1,48 +1,38 @@
 // src/middleware.ts
+import { NextRequest, NextResponse } from "next/server";
 
-import { NextRequest, NextResponse } from 'next/server';
-
-/**
- * Edge Runtime-safe middleware.
- * - Only runs on `/admin/*` routes
- * - Checks for `__session` cookie
- * - Delegates verification to `/api/auth/verify` (Node runtime)
- */
 export async function middleware(req: NextRequest) {
-  console.log("🛡️ middleware.ts: Triggered");
-
-  const token = req.cookies.get("__session")?.value;
   const { pathname } = req.nextUrl;
 
   if (!pathname.startsWith("/admin")) {
     return NextResponse.next();
   }
 
-  if (!token) {
-    console.log("⛔ No token → redirecting to /login");
-    return NextResponse.redirect(new URL("/login", req.url));
+  const session = req.cookies.get("__session")?.value;
+  if (!session) {
+    const r = NextResponse.redirect(new URL("/login", req.url));
+    r.cookies.delete("__session");
+    return r;
   }
 
   try {
     const verifyURL = new URL("/api/auth/verify", req.url);
-    const response = await fetch(verifyURL, {
+    const resp = await fetch(verifyURL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token }),
+      body: JSON.stringify({ sessionCookie: session }),
     });
 
-    if (!response.ok) {
-      console.log("⛔ Invalid token → redirecting");
-      const redirect = NextResponse.redirect(new URL("/login", req.url));
-      redirect.cookies.delete("__session");
-      return redirect;
+    if (!resp.ok) {
+      const r = NextResponse.redirect(new URL("/login", req.url));
+      r.cookies.delete("__session");
+      return r;
     }
-
-    console.log("✅ Token verified");
     return NextResponse.next();
-  } catch (err) {
-    console.error("🔥 Middleware error:", err);
-    return NextResponse.redirect(new URL("/login", req.url));
+  } catch {
+    const r = NextResponse.redirect(new URL("/login", req.url));
+    r.cookies.delete("__session");
+    return r;
   }
 }
 

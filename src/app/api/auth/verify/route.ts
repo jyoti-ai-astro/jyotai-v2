@@ -6,31 +6,27 @@ export const runtime = "nodejs";
 
 // 5 days
 const EXPIRES_IN_MS = 5 * 24 * 60 * 60 * 1000;
-const COOKIE_NAME = "session"; // keep your existing name
+const COOKIE_NAME = "__session";
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({} as any));
-    let { sessionCookie, idToken } = body || {};
+    // accept multiple shapes for compatibility
+    let sessionCookie: string | undefined =
+      body?.sessionCookie || body?.token || req.cookies.get(COOKIE_NAME)?.value;
+    const idToken: string | undefined = body?.idToken;
 
-    // If body is empty, try cookie
-    if (!sessionCookie && !idToken) {
-      sessionCookie = req.cookies.get(COOKIE_NAME)?.value;
-      if (!sessionCookie) {
-        return NextResponse.json(
-          { ok: false, error: "no_token" },
-          { status: 400 }
-        );
-      }
-    }
-
-    // Validate existing session or create one from idToken
+    // If we already have a session cookie, verify it
     if (sessionCookie) {
       const decoded = await adminAuth.verifySessionCookie(sessionCookie, true);
       return NextResponse.json({ ok: true, isAdmin: decoded.isAdmin === true });
     }
 
-    // Create new session cookie from a fresh ID token
+    // Otherwise create a new session cookie from a fresh ID token
+    if (!idToken) {
+      return NextResponse.json({ ok: false, error: "no_token" }, { status: 400 });
+    }
+
     const newSession = await adminAuth.createSessionCookie(idToken, {
       expiresIn: EXPIRES_IN_MS,
     });
@@ -45,7 +41,6 @@ export async function POST(req: NextRequest) {
     });
     return res;
   } catch (err: any) {
-    // Clear cookie if verification fails (handles "session-cookie-expired")
     const res = NextResponse.json(
       { ok: false, error: err?.errorInfo?.code || err?.message || "verify_failed" },
       { status: 401 }
