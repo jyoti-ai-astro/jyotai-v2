@@ -1,15 +1,19 @@
 // src/lib/email/zepto.ts
 import { SendMailClient } from "zeptomail";
 
-const url = process.env.ZEPTO_API_URL || "api.zeptomail.in/";
-const zeptoToken = process.env.ZEPTO_API_TOKEN || process.env.ZEPTO_MAIL_TOKEN;
+const rawUrl = process.env.ZEPTO_API_URL || "https://api.zeptomail.in/";
+const url = rawUrl.startsWith("http") ? rawUrl : `https://${rawUrl}`;
+
+const zeptoToken =
+  process.env.ZEPTO_API_TOKEN ||
+  process.env.ZEPTO_MAIL_TOKEN || // backward-compat
+  "";
 
 if (!zeptoToken) {
-  // Don't crash in prod, but log loudly
-  console.warn("⚠️ ZeptoMail token not set (ZEPTO_API_TOKEN or ZEPTO_MAIL_TOKEN). Emails will fail.");
+  console.warn("⚠️ Zepto token not set (ZEPTO_API_TOKEN/ZEPTO_MAIL_TOKEN). Emails will fail.");
 }
 
-export const zepto = new SendMailClient({ url, token: zeptoToken || "" });
+export const zepto = new SendMailClient({ url, token: zeptoToken });
 
 type SendMailArgs = {
   to: string;

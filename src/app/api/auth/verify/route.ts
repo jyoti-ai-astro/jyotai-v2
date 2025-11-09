@@ -1,39 +1,60 @@
 // src/app/api/auth/verify/route.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth } from '@/lib/firebase-admin';
+import { NextRequest, NextResponse } from "next/server";
+import { adminAuth } from "@/lib/firebase-admin";
 
-// ✅ firebase-admin is NOT Edge-compatible
-export const runtime = 'nodejs';
+export const runtime = "nodejs";
+
+// 5 days
+const EXPIRES_IN_MS = 5 * 24 * 60 * 60 * 1000;
+const COOKIE_NAME = "session"; // keep your existing name
 
 export async function POST(req: NextRequest) {
   try {
-    let { sessionCookie, idToken } = await req.json().catch(() => ({}));
+    const body = await req.json().catch(() => ({} as any));
+    let { sessionCookie, idToken } = body || {};
 
-    // If nothing sent in body, try to pull session cookie directly
+    // If body is empty, try cookie
     if (!sessionCookie && !idToken) {
-      const autoCookie = req.cookies.get('session')?.value;
-      if (!autoCookie) {
-        return NextResponse.json({ ok: false, error: 'No token provided' }, { status: 400 });
+      sessionCookie = req.cookies.get(COOKIE_NAME)?.value;
+      if (!sessionCookie) {
+        return NextResponse.json(
+          { ok: false, error: "no_token" },
+          { status: 400 }
+        );
       }
-      sessionCookie = autoCookie;
     }
 
-    // Prefer session cookie (middleware/SSR), fallback to idToken (client check)
-    const decoded = sessionCookie
-      ? await adminAuth.verifySessionCookie(sessionCookie, true)
-      : await adminAuth.verifyIdToken(idToken as string, true);
+    // Validate existing session or create one from idToken
+    if (sessionCookie) {
+      const decoded = await adminAuth.verifySessionCookie(sessionCookie, true);
+      return NextResponse.json({ ok: true, isAdmin: decoded.isAdmin === true });
+    }
 
-    return NextResponse.json({
-      ok: true,
-      isAdmin: decoded.isAdmin === true,
+    // Create new session cookie from a fresh ID token
+    const newSession = await adminAuth.createSessionCookie(idToken, {
+      expiresIn: EXPIRES_IN_MS,
     });
-  } catch (err) {
-    console.error('❌ API Verify Error:', err);
-    return NextResponse.json({ ok: false }, { status: 401 });
+
+    const res = NextResponse.json({ ok: true });
+    res.cookies.set(COOKIE_NAME, newSession, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      maxAge: EXPIRES_IN_MS / 1000,
+      path: "/",
+    });
+    return res;
+  } catch (err: any) {
+    // Clear cookie if verification fails (handles "session-cookie-expired")
+    const res = NextResponse.json(
+      { ok: false, error: err?.errorInfo?.code || err?.message || "verify_failed" },
+      { status: 401 }
+    );
+    res.cookies.set(COOKIE_NAME, "", { maxAge: 0, path: "/" });
+    return res;
   }
 }
 
-// Optional: reject non-POST
 export async function GET() {
-  return NextResponse.json({ ok: false, error: 'Method not allowed' }, { status: 405 });
+  return NextResponse.json({ ok: false, error: "Method not allowed" }, { status: 405 });
 }

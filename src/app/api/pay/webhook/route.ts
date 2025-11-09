@@ -11,17 +11,30 @@ function yyyymm(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-/**
- * Health/sanity endpoint so GETs don’t appear as 405 in Vercel logs.
- * Razorpay will POST; this is only for us and uptime pings.
- */
+// Drop undefined recursively (Firestore-safe)
+function sanitize<T>(obj: T): T {
+  if (obj === undefined) return undefined as any;
+  if (obj === null) return obj;
+  if (Array.isArray(obj)) return obj.map((v) => sanitize(v)).filter((v) => v !== undefined) as any;
+  if (typeof obj === "object") {
+    const out: any = {};
+    for (const [k, v] of Object.entries(obj as any)) {
+      const sv = sanitize(v as any);
+      if (sv !== undefined) out[k] = sv;
+    }
+    return out;
+  }
+  return obj;
+}
+
+/** Health check (so GET isn’t 405 in logs). Razorpay will POST. */
 export async function GET() {
   return NextResponse.json({ ok: true, expects: "POST (Razorpay)" });
 }
 
 export async function POST(req: Request) {
   try {
-    // --- 1) Verify webhook signature (raw body required) ---
+    // 1) Verify signature with raw body
     const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
     if (!webhookSecret) {
       return NextResponse.json({ error: "RAZORPAY_WEBHOOK_SECRET not set" }, { status: 500 });
@@ -38,37 +51,36 @@ export async function POST(req: Request) {
     const payload: AnyObject = JSON.parse(rawBody);
     const eventType: string = payload?.event || "unknown";
 
-    // Use event id (preferred) → fallback to payload id → fallback to timestamp
+    // Prefer Razorpay event id, then payload id, else timestamp
     const auditId = eventIdHeader || String(payload?.id || `evt_${Date.now()}`);
     const auditRef = adminDb.collection("razorpay_events").doc(auditId);
 
-    // Idempotency: if we've already processed this event, short-circuit.
     const existingAudit = await auditRef.get();
     if (existingAudit.exists && existingAudit.get("processedAt")) {
       return NextResponse.json({ status: "ok", duplicate_event: true });
     }
 
-    // Record the event (merged) for traceability
+    // First audit write (sanitize prevents undefined)
     await auditRef.set(
-      {
+      sanitize({
         event: eventType,
         payloadSnippet: {
-          id: payload?.id,
-          created_at: payload?.created_at,
-          account_id: payload?.account_id,
+          id: eventIdHeader || payload?.id || null, // << never undefined
+          created_at: payload?.created_at ?? null,
+          account_id: payload?.account_id ?? null,
         },
         receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-      },
+      }),
       { merge: true }
     );
 
-    // Ignore anything except payment.captured (but still return 200)
+    // Only process captured payments (others: mark ignored)
     if (eventType !== "payment.captured") {
       await auditRef.update({ ignored: true });
       return NextResponse.json({ status: "ignored", event: eventType });
     }
 
-    // --- 2) Extract payment/order fields ---
+    // 2) Extract fields
     const payment: AnyObject = payload?.payload?.payment?.entity || {};
     const order: AnyObject = payload?.payload?.order?.entity || {};
 
@@ -80,7 +92,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing payment id" }, { status: 400 });
     }
 
-    // Idempotency by payment id as well
+    // Idempotency on payments/<paymentId>
     const paymentsRef = adminDb.collection("payments").doc(paymentId);
     const paymentsSnap = await paymentsRef.get();
     if (paymentsSnap.exists) {
@@ -88,7 +100,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ status: "ok", duplicate: true });
     }
 
-    // Notes from payment or order
     const pNotes: AnyObject = payment?.notes || {};
     const oNotes: AnyObject = order?.notes || {};
 
@@ -108,7 +119,6 @@ export async function POST(req: Request) {
       (pNotes?.purpose as string) ||
       (oNotes?.purpose as string) ||
       "standard";
-
     if (purpose === "upgrade") purpose = "premium";
 
     const referredBy =
@@ -128,7 +138,7 @@ export async function POST(req: Request) {
 
     const normalizedEmail = String(email).trim().toLowerCase();
 
-    // --- 3) Ensure Auth user exists ---
+    // 3) Ensure Auth user exists
     const userRecord =
       (await adminAuth.getUserByEmail(normalizedEmail).catch(async (e: any) => {
         if (e?.code === "auth/user-not-found") {
@@ -143,33 +153,34 @@ export async function POST(req: Request) {
 
     const uid = userRecord.uid;
 
-    // --- 4) Create payments/<paymentId> and update users ---
+    // 4) Write payment + user
     const now = new Date();
     const monthStr = yyyymm(now);
 
     await adminDb.runTransaction(async (tx) => {
-      // write payments doc
-      tx.set(paymentsRef, {
-        paymentId,
-        orderId,
-        eventId: auditId,
-        email: normalizedEmail,
-        name,
-        purpose,
-        referredBy: referredBy || null,
-        amount: payment?.amount,
-        currency: payment?.currency,
-        method: payment?.method,
-        status: payment?.status,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
+      tx.set(
+        paymentsRef,
+        sanitize({
+          paymentId,
+          orderId,
+          eventId: auditId,
+          email: normalizedEmail,
+          name,
+          purpose,
+          referredBy: referredBy || null,
+          amount: payment?.amount ?? null,
+          currency: payment?.currency ?? null,
+          method: payment?.method ?? null,
+          status: payment?.status ?? null,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        })
+      );
 
       const userRef = adminDb.collection("users").doc(uid);
       const byEmailRef = adminDb.collection("users_by_email").doc(normalizedEmail);
       const userSnap = await tx.get(userRef);
       const data = (userSnap.exists ? (userSnap.data() as AnyObject) : {}) || {};
 
-      // Base user fields
       const base = {
         email: normalizedEmail,
         name,
@@ -180,62 +191,58 @@ export async function POST(req: Request) {
       };
 
       if (purpose === "premium") {
-        // Premium: set plan + fresh monthly quota (20)
         const premiumUntil = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
         tx.set(
           userRef,
-          {
+          sanitize({
             ...base,
             plan: "premium",
             upgradedAt: now.toISOString(),
             premiumUntil,
             quota: { month: monthStr, monthly_limit: 20, used: 0 },
-            credits: Number(data?.credits ?? 0), // credits irrelevant on premium path
-          },
+            credits: Number(data?.credits ?? 0),
+          }),
           { merge: true }
         );
       } else {
-        // Standard: initialize credits (3) if new
         tx.set(
           userRef,
-          {
+          sanitize({
             ...base,
             plan: data?.plan || "standard",
             createdAt: data?.createdAt || now.toISOString(),
             credits: typeof data?.credits === "number" ? data.credits : 3,
-          },
+          }),
           { merge: true }
         );
       }
 
-      // Also maintain an email-keyed mirror if you want quick lookups by email
       tx.set(
         byEmailRef,
-        {
+        sanitize({
           uid,
           email: normalizedEmail,
           lastPaymentId: paymentId,
           updatedAt: now.toISOString(),
-        },
+        }),
         { merge: true }
       );
 
-      // referral bonus (+1 credit to referrer if exists)
       if (referredBy) {
         const refQ = await tx.get(
           adminDb.collection("users").where("referralCode", "==", referredBy).limit(1)
         );
         if (!refQ.empty) {
           const refDoc = refQ.docs[0];
+          const curr = Number((refDoc.data() as AnyObject).credits || 0);
           tx.update(refDoc.ref, {
-            credits: Number((refDoc.data() as AnyObject).credits || 0) + 1,
+            credits: curr + 1,
             updatedAt: now.toISOString(),
           });
         }
       }
     });
 
-    // Mark processed
     await auditRef.update({
       processedAt: admin.firestore.FieldValue.serverTimestamp(),
       paymentId,

@@ -1,4 +1,5 @@
-import admin from 'firebase-admin';
+// src/lib/firebase-admin.ts
+import admin from "firebase-admin";
 
 let app: admin.app.App;
 
@@ -10,6 +11,9 @@ if (!admin.apps.length) {
 } else {
   app = admin.app();
 }
+
+// Important: don't ever write `undefined` into Firestore documents
+app.firestore().settings({ ignoreUndefinedProperties: true });
 
 export const adminDb = app.firestore();
 export const adminAuth = app.auth();
