@@ -1,70 +1,81 @@
-// ✅ File: src/app/api/pay/create-order/route.ts
+// src/app/api/pay/create-order/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { razorpay } from "@/lib/razorpay";
 import { rateLimit } from "@/lib/rate-limit";
 
-// Use Node runtime (SDK & env)
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   try {
-    // Rate limit by IP
     const ip =
       req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
       req.headers.get("x-real-ip") ||
       "unknown";
-    
-    const rateLimitResult = rateLimit(`order:${ip}`, 10, 60_000);
-    if (!rateLimitResult.ok) {
-      return NextResponse.json(
-        { error: "Too many requests. Please try again later." },
-        { status: 429 }
-      );
+
+    const rl = rateLimit(`order:${ip}`, 10, 60_000);
+    if (!rl.ok) {
+      return NextResponse.json({ error: "Too many requests" }, { status: 429 });
     }
 
+    const body = await req.json().catch(() => ({}));
     const {
       email,
       amount = 49900,
-      purpose = "standard", // "standard" | "premium"
+      purpose = "standard",
       name = "",
       dob = "",
       query = "",
-    } = await req.json();
+    } = body;
 
-    // Input validation
     if (!email || typeof email !== "string" || !email.includes("@")) {
       return NextResponse.json({ error: "Valid email is required" }, { status: 400 });
     }
-    if (!amount || typeof amount !== "number" || amount < 100) {
+    const amt = Number(amount);
+    if (!Number.isInteger(amt) || amt < 100) {
       return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
     }
 
-    // 🍪 Read referral from cookie if present (standardized key)
+    // referral cookie
     const cookieHeader = req.headers.get("cookie") || "";
     const refMatch = cookieHeader.match(/(?:^|;\s*)jyotai_referral=([^;]+)/);
     const ref = refMatch?.[1] || "";
 
     const options = {
-      amount, // in paise
+      amount: amt, // paise
       currency: "INR",
-      receipt: `receipt_order_${Date.now()}`,
+      receipt: `rcpt_${Date.now()}`,
       notes: {
         email: email.trim().toLowerCase(),
-        purpose, // keep consistent with webhook logic below
+        purpose,
         ref,
-        name: String(name || "").trim().substring(0, 100),
-        dob: String(dob || "").trim().substring(0, 50),
-        query: String(query || "").trim().substring(0, 500),
+        name: String(name || "").slice(0, 100),
+        dob: String(dob || "").slice(0, 50),
+        query: String(query || "").slice(0, 500),
       },
     } as const;
 
     const order = await razorpay.orders.create(options);
-    return NextResponse.json({ order });
-  } catch (error) {
-    console.error("❌ Razorpay Order Creation Failed:", error);
+    // explicit shape for client
+    return NextResponse.json({
+      order: {
+        id: order.id,
+        amount: order.amount,
+        currency: order.currency,
+        notes: order.notes,
+      },
+      key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || null,
+    });
+  } catch (error: any) {
+    // Razorpay SDK throws with statusCode/description/response
+    console.error("❌ create-order error:", {
+      message: error?.message,
+      statusCode: error?.statusCode,
+      description: error?.error?.description,
+      response: error?.response,
+    });
     return NextResponse.json(
       { error: "Failed to create Razorpay order" },
-      { status: 500 }
+      { status: Number(error?.statusCode) || 500 }
     );
   }
 }

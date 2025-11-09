@@ -1,11 +1,20 @@
-import { NextResponse } from "next/server";
+// src/app/api/cron/ping-brain/route.ts
+import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-export async function GET(req: Request) {
-  const auth = req.headers.get("authorization") || "";
-  if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
-    return new Response("Unauthorized", { status: 401 });
+export async function GET(req: NextRequest) {
+  const url = new URL(req.url);
+  const qsSecret = url.searchParams.get("secret") || "";
+  const headerAuth = req.headers.get("authorization") || "";
+  const expected = process.env.CRON_SECRET || "";
+
+  const authed =
+    (expected && headerAuth === `Bearer ${expected}`) ||
+    (expected && qsSecret === expected);
+
+  if (!authed) {
+    return new NextResponse("Unauthorized", { status: 401 });
   }
 
   const healthUrl =
@@ -17,7 +26,7 @@ export async function GET(req: Request) {
     const res = await fetch(healthUrl, { cache: "no-store" });
     status = res.status;
     ok = res.ok;
-  } catch (e) {
+  } catch {
     ok = false;
   }
 

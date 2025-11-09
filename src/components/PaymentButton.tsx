@@ -13,7 +13,6 @@ type RazorpayResponse = {
 
 type RazorpayOptions = {
   key: string;
-  amount: string;
   currency: string;
   name: string;
   description: string;
@@ -61,9 +60,9 @@ export function PaymentButton({ name, dob, query, email }: PaymentButtonProps) {
           prediction: aiPrediction,
         }),
       });
-      console.log("User data and prediction saved successfully!");
-    } catch (error) {
-      console.error("Failed to save user data:", error);
+      console.log("✅ Prediction saved & email sent (if configured).");
+    } catch (e) {
+      console.error("❌ Failed to persist after payment:", e);
       setError("Prediction saved, but email failed. Contact support if needed.");
     }
   };
@@ -83,26 +82,33 @@ export function PaymentButton({ name, dob, query, email }: PaymentButtonProps) {
           }),
         }
       );
-
-      if (!res.ok) throw new Error("The oracle is silent. Please try again.");
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        throw new Error(`AI error (${res.status}): ${t || "try again"}`);
+      }
       const data = await res.json();
-      const aiPrediction =
-        data.prediction || "The cosmos whispers in riddles today.";
+      const aiPrediction = data.prediction || "The cosmos whispers in riddles today.";
       setPrediction(aiPrediction);
       await persistAfterPayment(paymentResponse, aiPrediction);
-    } catch (error) {
-      if (error instanceof Error) {
-        setError(error.message);
-      } else {
-        setError("An unexpected error occurred. Please try again.");
-      }
+    } catch (e: any) {
+      console.error("❌ Prediction error:", e);
+      setError(e?.message || "An unexpected error occurred. Please try again.");
     } finally {
       setIsLoading(false);
     }
   };
 
+  const loadRzp = () =>
+    new Promise<void>((resolve, reject) => {
+      if (window.Razorpay) return resolve();
+      const s = document.createElement("script");
+      s.src = "https://checkout.razorpay.com/v1/checkout.js";
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error("Razorpay SDK failed to load"));
+      document.body.appendChild(s);
+    });
+
   const makePayment = async () => {
-    // staging/dev bypass: deliver reading without charging
     if (process.env.NEXT_PUBLIC_PAYMENTS_ENABLED === "false") {
       return getPrediction({
         razorpay_order_id: "test_order",
@@ -112,20 +118,21 @@ export function PaymentButton({ name, dob, query, email }: PaymentButtonProps) {
     }
 
     setIsLoading(true);
+    setError(null);
     try {
-      // 🍪 referral cookie (we standardize on "jyotai_referral")
+      // referral cookie
       const referralCookie = document.cookie
         .split(";")
         .find((c) => c.trim().startsWith("jyotai_referral="));
       const referralCode = referralCookie ? referralCookie.split("=")[1] : "";
 
-      // 1) create order on our server (new path)
+      // 1) create order
       const orderRes = await fetch("/api/pay/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email,
-          amount: 49900, // ₹499.00 in paise
+          amount: 49900,
           purpose: "standard",
           ref: referralCode,
           name,
@@ -133,56 +140,38 @@ export function PaymentButton({ name, dob, query, email }: PaymentButtonProps) {
           query,
         }),
       });
-      if (!orderRes.ok) throw new Error("Failed to create Razorpay order");
-      const { order } = await orderRes.json();
 
-      // 2) load Razorpay SDK and open checkout
-      const script = document.createElement("script");
-      script.src = "https://checkout.razorpay.com/v1/checkout.js";
-      script.onerror = () => {
-        setError("Razorpay SDK failed to load.");
-        setIsLoading(false);
-      };
-      script.onload = () => {
-        if (!window.Razorpay) {
-          setError("Razorpay SDK not available.");
-          setIsLoading(false);
-          return;
-        }
-
-        const rzp = new window.Razorpay({
-          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "",
-          amount: String(order.amount),
-          currency: order.currency,
-          name: "JyotAI Divine Reading",
-          description: "Instant Vedic Insight",
-          order_id: order.id,
-          handler: getPrediction, // called on success
-          prefill: {
-            name,
-            email,
-            contact: "",
-          },
-          notes: {
-            name,
-            dob,
-            query,
-            purpose: "standard",
-            ref: referralCode,
-          },
-          theme: { color: "#D4AF37" },
-        });
-
-        rzp.open();
-        setIsLoading(false);
-      };
-      document.body.appendChild(script);
-    } catch (error) {
-      if (error instanceof Error) {
-        setError("Could not connect to the payment gateway.");
-      } else {
-        setError("An unexpected error occurred.");
+      if (!orderRes.ok) {
+        const t = await orderRes.text().catch(() => "");
+        console.error("❌ /create-order failed:", orderRes.status, t);
+        throw new Error("Payment setup failed. Please refresh and try again.");
       }
+
+      const { order, key } = await orderRes.json();
+      if (!key) throw new Error("Missing Razorpay key (client)");
+
+      // 2) load checkout SDK
+      await loadRzp();
+      if (!window.Razorpay) throw new Error("Razorpay SDK not available");
+
+      // 3) open checkout (do NOT pass amount if order_id is used)
+      const rzp = new window.Razorpay({
+        key,
+        currency: order.currency,
+        name: "JyotAI Divine Reading",
+        description: "Instant Vedic Insight",
+        order_id: order.id,
+        handler: getPrediction,
+        prefill: { name, email, contact: "" },
+        notes: { name, dob, query, purpose: "standard", ref: referralCode },
+        theme: { color: "#D4AF37" },
+      });
+
+      rzp.open();
+    } catch (e: any) {
+      console.error("❌ makePayment error:", e);
+      setError(e?.message || "Could not connect to the payment gateway.");
+    } finally {
       setIsLoading(false);
     }
   };
@@ -191,12 +180,10 @@ export function PaymentButton({ name, dob, query, email }: PaymentButtonProps) {
     return (
       <div className="mt-8 p-6 bg-gray-800 rounded-lg shadow-lg text-left">
         {error && <ErrorMessage message={error} onClose={() => setError(null)} />}
-        <h2 className="text-2xl font-bold mb-4 text-yellow-500">
-          🔮 A Message from the Cosmos:
-        </h2>
+        <h2 className="text-2xl font-bold mb-4 text-yellow-500">🔮 A Message from the Cosmos:</h2>
         <p className="text-lg whitespace-pre-wrap text-white">{prediction}</p>
         <p className="text-sm mt-4 text-gray-400">
-          A magic link to access your history has been sent to <strong>{email}</strong>.
+          A magic link has been sent to <strong>{email}</strong>.
         </p>
       </div>
     );

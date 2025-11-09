@@ -1,5 +1,5 @@
 {
   "crons": [
-    { "path": "/api/cron/ping-brain", "schedule": "0 6 * * *" }
+    { "path": "/api/cron/ping-brain?secret=YOUR_SECRET", "schedule": "0 6 * * *" }
   ]
 }

@@ -1,115 +1,83 @@
 // src/app/api/predictions/[id]/share/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuth, adminDb } from "@/lib/firebase-admin";
-import satori, { SatoriOptions } from "satori";
-import { Resvg } from "@resvg/resvg-js";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-// ----- helpers -----
-function pickKeyInsight(text: string, max = 180) {
-  if (!text) return "May clarity and strength guide your path.";
-  const lines = text
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
-  const firstGood = lines.find((l) => l.length > 20) || lines[0] || text;
-  return firstGood.length > max ? firstGood.slice(0, max - 1) + "…" : firstGood;
-}
-
-async function getUserAndPrediction(uid: string, id: string) {
-  const userRef = adminDb.collection("users").doc(uid);
-  const [userSnap, predSnap] = await Promise.all([
-    userRef.get(),
-    userRef.collection("predictions").doc(id).get(),
-  ]);
-  if (!userSnap.exists) throw new Error("user_not_found");
-  if (!predSnap.exists) throw new Error("prediction_not_found");
-  return { user: userSnap.data() || {}, pred: predSnap.data() || {} };
-}
-
-// ----- GET -> returns PNG image -----
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+/**
+ * GET /api/predictions/:id/share
+ * Returns a PNG social-share image for the prediction using resvg at runtime.
+ */
+export async function GET(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
     const id = params.id;
-    if (!id) return NextResponse.json({ error: "Missing prediction id" }, { status: 400 });
+    if (!id) {
+      return NextResponse.json({ error: "Missing prediction id" }, { status: 400 });
+    }
 
-    // auth via session cookie
     const session = req.cookies.get("session")?.value;
-    if (!session) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    if (!session) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
     const decoded = await adminAuth.verifySessionCookie(session, true);
     const uid = decoded.uid;
 
-    const { user, pred } = await getUserAndPrediction(uid, id);
-    const quote = pickKeyInsight(String(pred.prediction || ""));
+    const userRef = adminDb.collection("users").doc(uid);
+    const predRef = userRef.collection("predictions").doc(id);
+    const [userSnap, predSnap] = await Promise.all([userRef.get(), predRef.get()]);
 
-    // Build SVG via satori
-    const width = 1200;
-    const height = 630;
-    const svg = await satori(
-      {
-        type: "div",
-        props: {
-          style: {
-            width,
-            height,
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "space-between",
-            padding: 48,
-            background: "linear-gradient(135deg, #0b1220 0%, #121a2b 50%, #0b1220 100%)",
-          } as React.CSSProperties,
-          children: [
-            {
-              type: "div",
-              props: {
-                style: { color: "#D4AF37", fontSize: 36, fontWeight: 700 },
-                children: "🪔 JyotAI · Divine Insight",
-              },
-            },
-            {
-              type: "div",
-              props: {
-                style: {
-                  color: "#ffffff",
-                  fontSize: 40,
-                  lineHeight: 1.35,
-                  whiteSpace: "pre-wrap",
-                },
-                children: `“${quote}”`,
-              },
-            },
-            {
-              type: "div",
-              props: {
-                style: {
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  color: "#A7B1C2",
-                  fontSize: 22,
-                },
-                children: [
-                  { type: "div", props: { children: user?.name ? `— ${user.name}` : "" } },
-                  { type: "div", props: { style: { color: "#D4AF37" }, children: "jyoti.app" } },
-                ],
-              },
-            },
-          ],
-        },
-      } as any,
-      {
-        width,
-        height,
-        // If you later host fonts, add them here. Web-safe works fine for now.
-        fonts: [],
-      } as SatoriOptions
-    );
+    if (!userSnap.exists) return NextResponse.json({ error: "User not found" }, { status: 404 });
+    if (!predSnap.exists) return NextResponse.json({ error: "Prediction not found" }, { status: 404 });
 
-    // Rasterize to PNG
+    const user = userSnap.data() || {};
+    const pred = predSnap.data() || {};
+
+    const title = (pred.query as string) || "Your Question";
+    const body = (pred.prediction as string) || "No reading found.";
+
+    // Build SVG markup (safe subset)
+    const svg = `
+      <svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#0B0F14"/>
+            <stop offset="100%" stop-color="#1a1f29"/>
+          </linearGradient>
+        </defs>
+        <rect width="1200" height="630" fill="url(#g)"/>
+        <g font-family="Inter, system-ui, -apple-system, Segoe UI, Roboto" fill="#F7F7F8">
+          <text x="60" y="110" font-size="44" fill="#FFC857">🪔 JyotAI</text>
+          <text x="60" y="170" font-size="34" fill="#2A9DF4">Q:</text>
+          <foreignObject x="110" y="135" width="1030" height="130">
+            <div xmlns="http://www.w3.org/1999/xhtml"
+                 style="color:#F7F7F8;font-size:30px;line-height:1.25;word-wrap:break-word;">
+              ${escapeHtml(title).slice(0, 220)}
+            </div>
+          </foreignObject>
+
+          <text x="60" y="280" font-size="34" fill="#2A9DF4">Reading:</text>
+          <foreignObject x="60" y="300" width="1080" height="260">
+            <div xmlns="http://www.w3.org/1999/xhtml"
+                 style="color:#D1D5DB;font-size:26px;line-height:1.35;white-space:pre-wrap;word-wrap:break-word;">
+              ${escapeHtml(body).slice(0, 700)}
+            </div>
+          </foreignObject>
+
+          <text x="60" y="600" font-size="22" fill="#FFC857">jyoti.app</text>
+        </g>
+      </svg>
+    `;
+
+    // ⬇️ Runtime import to avoid bundling .node binaries during build
+    const { Resvg } = await import("@resvg/resvg-js");
     const resvg = new Resvg(svg, {
-      background: "rgba(0,0,0,0)",
       fitTo: { mode: "width", value: 1200 },
+      background: "rgba(0,0,0,0)",
     });
     const png = resvg.render().asPng();
 
@@ -117,42 +85,19 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       status: 200,
       headers: {
         "Content-Type": "image/png",
-        "Content-Disposition": `attachment; filename="jyotai-share-${id}.png"`,
-        "Cache-Control": "private, max-age=0, no-cache, no-store, must-revalidate",
-        Pragma: "no-cache",
-        Expires: "0",
+        "Cache-Control": "public, max-age=0, s-maxage=31536000, stale-while-revalidate=86400",
       },
     });
   } catch (e) {
-    console.error("share image error:", e);
-    const msg = e instanceof Error ? e.message : String(e);
-    const code =
-      msg === "user_not_found" || msg === "prediction_not_found" ? 404 : 500;
-    return NextResponse.json({ error: "Failed to generate share image" }, { status: code });
+    console.error("SHARE image error:", e);
+    return NextResponse.json({ error: "Failed to render share image" }, { status: 500 });
   }
 }
 
-// ----- POST -> returns JSON for WhatsApp button -----
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
-  try {
-    const id = params.id;
-    if (!id) return NextResponse.json({ error: "Missing prediction id" }, { status: 400 });
-
-    const session = req.cookies.get("session")?.value;
-    if (!session) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    const decoded = await adminAuth.verifySessionCookie(session, true);
-    const uid = decoded.uid;
-
-    const { pred } = await getUserAndPrediction(uid, id);
-    const headline = pickKeyInsight(String(pred.prediction || ""), 120);
-
-    const origin = req.nextUrl.origin;
-    const imageUrl = `${origin}/api/predictions/${id}/share`; // GET (above) returns the PNG
-    const pageUrl = `${origin}/predictions/${id}`;
-
-    return NextResponse.json({ ok: true, imageUrl, pageUrl, headline });
-  } catch (e) {
-    console.error("share POST error:", e);
-    return NextResponse.json({ ok: false, error: "Share prepare failed" }, { status: 500 });
-  }
+// tiny helper
+function escapeHtml(str: string) {
+  return (str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }

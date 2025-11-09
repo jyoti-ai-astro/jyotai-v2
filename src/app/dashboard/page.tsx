@@ -56,7 +56,7 @@ export default function DashboardPage() {
 
   const [referralCode, setReferralCode] = useState("");
   const [referredBy, setReferredBy] = useState("");
-  const [copySuccess, setCopySuccess] = useState(false);
+  const [copySuccess, setCopySuccess] = useState(false); // ← keep only this one
 
   const search = useSearchParams();
   const upgradedNow = search.get("upgraded") === "true";
@@ -95,7 +95,6 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!user) return;
-    // small daily flavour for premium
     if (user.plan === "premium") {
       const dailyTip = tips[new Date().getDate() % tips.length];
       setTip(dailyTip);
@@ -108,8 +107,6 @@ export default function DashboardPage() {
     const base = process.env.NEXT_PUBLIC_BASE_URL || "https://jyoti.app";
     return `${base}/?ref=${encodeURIComponent(referralCode)}`;
   }, [referralCode]);
-
-  const [copySuccess, setCopySuccess] = useState(false);
 
   const handleCopy = async () => {
     if (!referralLink) return;
@@ -213,7 +210,6 @@ export default function DashboardPage() {
 
       {/* Predictions */}
       {fetching ? (
-        // If you created PredictionsSkeleton, use it; else fallback to text
         (PredictionsSkeleton ? <PredictionsSkeleton /> : (
           <p className="text-gray-400">Loading divine records...</p>
         ))
@@ -245,7 +241,6 @@ export default function DashboardPage() {
                 <p className="text-sm text-gray-300 mt-2 whitespace-pre-wrap">
                   <strong>Reading:</strong> {preview}
                 </p>
-                {/* actions */}
                 <div className="mt-3 flex items-center gap-3">
                   <Link
                     href={`/predictions/${p.id}`}
