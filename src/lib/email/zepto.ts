@@ -2,14 +2,14 @@
 import { SendMailClient } from "zeptomail";
 
 const url = process.env.ZEPTO_API_URL || "api.zeptomail.in/";
-const token = process.env.ZEPTO_API_TOKEN;
+const zeptoToken = process.env.ZEPTO_API_TOKEN || process.env.ZEPTO_MAIL_TOKEN;
 
-if (!token) {
+if (!zeptoToken) {
   // Don't crash in prod, but log loudly
-  console.warn("⚠️ ZEPTO_API_TOKEN is not set. Emails will fail.");
+  console.warn("⚠️ ZeptoMail token not set (ZEPTO_API_TOKEN or ZEPTO_MAIL_TOKEN). Emails will fail.");
 }
 
-export const zepto = new SendMailClient({ url, token: token || "" });
+export const zepto = new SendMailClient({ url, token: zeptoToken || "" });
 
 type SendMailArgs = {
   to: string;
