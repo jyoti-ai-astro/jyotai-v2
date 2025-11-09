@@ -5,24 +5,16 @@ import { adminAuth, adminDb } from "@/lib/firebase-admin";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * GET /api/predictions/:id
- * Returns the prediction document for the currently authenticated user.
- */
 export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
     const id = params?.id;
-    if (!id) {
-      return NextResponse.json({ error: "Missing prediction id" }, { status: 400 });
-    }
+    if (!id) return NextResponse.json({ error: "Missing prediction id" }, { status: 400 });
 
     const session = req.cookies.get("session")?.value;
-    if (!session) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
+    if (!session) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
     const decoded = await adminAuth.verifySessionCookie(session, true);
     const uid = decoded.uid;
@@ -33,10 +25,8 @@ export async function GET(
       userRef.collection("predictions").doc(id).get(),
     ]);
 
-    if (!userSnap.exists)
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-    if (!predSnap.exists)
-      return NextResponse.json({ error: "Prediction not found" }, { status: 404 });
+    if (!userSnap.exists) return NextResponse.json({ error: "User not found" }, { status: 404 });
+    if (!predSnap.exists) return NextResponse.json({ error: "Prediction not found" }, { status: 404 });
 
     const user = userSnap.data() || {};
     const pred = predSnap.data() || {};
