@@ -2,8 +2,8 @@
 "use client";
 
 // ✅ Next.js flags for client-only, dynamic rendering
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+//export const dynamic = "force-dynamic";
+//export const revalidate = 0;
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
