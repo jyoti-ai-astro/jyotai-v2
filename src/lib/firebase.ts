@@ -1,5 +1,5 @@
 // src/lib/firebase.ts
-// This file is now PURELY for the client-side (the browser).
+// Client-side Firebase setup
 
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
@@ -8,18 +8,16 @@ import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: "jyotai-v2-prod.firebaseapp.com",
-  projectId: "jyotai-v2-prod",
-  storageBucket: "jyotai-v2-prod.firebasestorage.app",
-  messagingSenderId: "844576794256",
-  appId: "1:844576794256:web:2773b1f7d354a9cff05a15",
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Initialize app
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
-// Export everything needed
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
-export { app }; // ✅ This fixes the compile error
+export { app };

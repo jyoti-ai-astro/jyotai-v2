@@ -5,12 +5,9 @@ function normalizeUrl(v?: string) {
   if (!v) return "https://api.zeptomail.in/v1.1/email";
   let u = v.trim();
   if (!u.startsWith("http")) u = `https://${u}`;
-  // If someone passed the base host, append version + resource
   if (!/\/v\d+\.\d+\/email\/?$/.test(u)) {
-    u = u.replace(/\/+$/, ""); // trim trailing slash
-    if (!/\/v\d+\.\d+$/.test(u)) {
-      u = `${u}/v1.1`;
-    }
+    u = u.replace(/\/+$/, "");
+    if (!/\/v\d+\.\d+$/.test(u)) u = `${u}/v1.1`;
     u = `${u}/email`;
   }
   return u;
@@ -22,10 +19,8 @@ const zeptoToken =
   process.env.ZEPTO_MAIL_TOKEN ||
   "";
 
-if (!zeptoToken || !zeptoToken.startsWith("Zoho-enczapikey ")) {
-  console.warn(
-    "⚠️ Invalid Zepto token. Ensure ZEPTO_API_TOKEN starts with 'Zoho-enczapikey ' and contains your key."
-  );
+if (!zeptoToken.startsWith("Zoho-enczapikey ")) {
+  console.warn("⚠️ Invalid Zepto token format. Expected 'Zoho-enczapikey ...'");
 }
 
 export const zepto = new SendMailClient({ url, token: zeptoToken });
@@ -36,6 +31,7 @@ type SendMailArgs = {
   html: string;
   fromAddress?: string;
   fromName?: string;
+  replyTo?: string;
 };
 
 export async function sendZepto({
@@ -44,10 +40,12 @@ export async function sendZepto({
   html,
   fromAddress = process.env.SENDER_EMAIL || "order@jyoti.app",
   fromName = "JyotAI",
+  replyTo = process.env.SUPPORT_EMAIL || fromAddress,
 }: SendMailArgs) {
   return zepto.sendMail({
     from: { address: fromAddress, name: fromName },
     to: [{ email_address: { address: to, name: to.split("@")[0] } }],
+    reply_to: { address: replyTo },
     subject,
     htmlbody: html,
   });
