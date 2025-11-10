@@ -4,42 +4,44 @@ import { rateLimit } from "@/lib/rate-limit";
 import { adminAuth } from "@/lib/firebase-admin";
 import { sendZepto } from "@/lib/email/zepto";
 
-// Must run on Node (uses firebase-admin + env)
 export const runtime = "nodejs";
 
-function baseUrlFrom(req: NextRequest) {
-  // Use the canonical prod domain you actually serve from.
-  // If Vercel redirects apex -> www, set this to https://www.jyoti.app
-  return process.env.NEXT_PUBLIC_BASE_URL || req.nextUrl.origin;
+/** Resolve the exact host users should land on (avoid apex↔www hops). */
+function canonicalBase(req: NextRequest) {
+  const fromEnv = (process.env.NEXT_PUBLIC_BASE_URL || "").trim();
+  if (fromEnv) return fromEnv.replace(/\/+$/, "");
+  // Hard fallback to request origin if env not set
+  return req.nextUrl.origin.replace(/\/+$/, "");
 }
 
 function validEmail(v: unknown): string | null {
   const s = String(v || "").trim().toLowerCase();
-  if (!s || !s.includes("@") || !s.includes(".")) return null;
-  return s;
+  return s && s.includes("@") && s.includes(".") ? s : null;
 }
 
 export async function POST(req: NextRequest) {
   try {
-    // Simple IP rate limit
-    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
-      || req.headers.get("x-real-ip")
-      || "unknown";
-    const limit = rateLimit(`send-link:${ip}`, 5, 60_000);
-    if (!limit.ok) {
+    // --- 0) Simple rate limit by IP
+    const ip =
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      req.headers.get("x-real-ip") ||
+      "unknown";
+    const rl = rateLimit(`send-link:${ip}`, 5, 60_000);
+    if (!rl.ok) {
       return NextResponse.json(
-        { error: "Too many requests. Please wait a moment." },
+        { ok: false, error: "Too many requests. Please wait a moment." },
         { status: 429 }
       );
     }
 
+    // --- 1) Parse & validate
     const body = await req.json().catch(() => ({}));
     const email = validEmail(body?.email);
     if (!email) {
-      return NextResponse.json({ error: "Valid email required" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "Valid email required" }, { status: 400 });
     }
 
-    // Ensure Auth user exists (verified so they can sign in seamlessly)
+    // --- 2) Ensure Auth user exists (verified so sign-in flows cleanly)
     await adminAuth.getUserByEmail(email).catch(async (e: any) => {
       if (e?.code === "auth/user-not-found") {
         await adminAuth.createUser({ email, emailVerified: true });
@@ -48,17 +50,16 @@ export async function POST(req: NextRequest) {
       throw e;
     });
 
-    // Build the Firebase ActionCodeSettings with your canonical base URL
-    const origin = baseUrlFrom(req).replace(/\/+$/, "");
+    // --- 3) Build canonical ActionCodeSettings and generate the real link
+    const origin = canonicalBase(req);
     const actionCodeSettings = {
-      url: `${origin}/login`, // we finish sign-in on /login
+      url: `${origin}/login`, // we complete sign-in on /login (client reads oobCode there)
       handleCodeInApp: true,
     };
 
-    // 👉 Generate the REAL Firebase email sign-in link
     const magicLink = await adminAuth.generateSignInWithEmailLink(email, actionCodeSettings);
 
-    // Send via Zepto from order@jyoti.app (with Reply-To to support if set)
+    // --- 4) Send via Zepto
     const support = process.env.SUPPORT_EMAIL || process.env.SENDER_EMAIL || "order@jyoti.app";
     const html = `
       <div style="background:#0B0F14;color:#F7F7F8;padding:24px;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial">
@@ -81,17 +82,16 @@ export async function POST(req: NextRequest) {
       to: email,
       subject: "Your secure JyotAI sign-in link",
       html,
-      // fromAddress defaults to SENDER_EMAIL/order@jyoti.app; replyTo to SUPPORT_EMAIL
+      // fromAddress defaults to SENDER_EMAIL; replyTo defaults to SUPPORT_EMAIL (see zepto.ts)
     });
 
     return NextResponse.json({ ok: true, message: "Magic link sent" });
   } catch (e) {
     console.error("❌ send-link error:", e);
-    return NextResponse.json({ error: "Failed to send magic link" }, { status: 500 });
+    return NextResponse.json({ ok: false, error: "Failed to send magic link" }, { status: 500 });
   }
 }
 
-// Optional safety
 export async function GET() {
-  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
+  return NextResponse.json({ ok: false, error: "Method not allowed" }, { status: 405 });
 }

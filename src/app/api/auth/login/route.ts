@@ -1,35 +1,34 @@
+// src/app/api/auth/login/route.ts
 import { NextResponse } from "next/server";
 import { adminAuth } from "@/lib/firebase-admin";
 
-// Node runtime (firebase-admin)
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
-    const authorization = req.headers.get("Authorization") || req.headers.get("authorization");
-    if (!authorization?.startsWith("Bearer ")) {
-      return NextResponse.json({ status: "error", message: "Unauthorized" }, { status: 401 });
+    const authz = req.headers.get("authorization") || req.headers.get("Authorization");
+    if (!authz?.startsWith("Bearer ")) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const idToken = authorization.split("Bearer ")[1].trim();
-    // 14 days
-    const expiresIn = 60 * 60 * 24 * 14 * 1000;
+    const idToken = authz.slice("Bearer ".length).trim();
+    const expiresIn = 60 * 60 * 24 * 14 * 1000; // 14 days
 
     const sessionCookie = await adminAuth.createSessionCookie(idToken, { expiresIn });
 
-    const res = NextResponse.json({ status: "success" });
+    const res = NextResponse.json({ ok: true });
     res.cookies.set({
       name: "session",
       value: sessionCookie,
       httpOnly: true,
       secure: true,
-      maxAge: expiresIn / 1000, // seconds
+      maxAge: expiresIn / 1000,
       path: "/",
       sameSite: "lax",
     });
     return res;
-  } catch (error) {
-    console.error("Session login error:", error);
-    return NextResponse.json({ status: "error", message: "Internal Server Error" }, { status: 500 });
+  } catch (err) {
+    console.error("Session login error:", err);
+    return NextResponse.json({ ok: false, error: "Internal Server Error" }, { status: 500 });
   }
 }

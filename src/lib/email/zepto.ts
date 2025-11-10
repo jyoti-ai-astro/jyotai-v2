@@ -19,8 +19,8 @@ const zeptoToken =
   process.env.ZEPTO_MAIL_TOKEN ||
   "";
 
-if (!zeptoToken.startsWith("Zoho-enczapikey ")) {
-  console.warn("⚠️ Invalid Zepto token format. Expected 'Zoho-enczapikey ...'");
+if (!zeptoToken || !zeptoToken.startsWith("Zoho-enczapikey ")) {
+  console.warn("⚠️ Invalid Zepto token. Ensure ZEPTO_API_TOKEN starts with 'Zoho-enczapikey '.");
 }
 
 export const zepto = new SendMailClient({ url, token: zeptoToken });
@@ -31,7 +31,7 @@ type SendMailArgs = {
   html: string;
   fromAddress?: string;
   fromName?: string;
-  replyTo?: string;
+  replyTo?: string; // NEW
 };
 
 export async function sendZepto({
@@ -40,13 +40,13 @@ export async function sendZepto({
   html,
   fromAddress = process.env.SENDER_EMAIL || "order@jyoti.app",
   fromName = "JyotAI",
-  replyTo = process.env.SUPPORT_EMAIL || fromAddress,
+  replyTo = process.env.SUPPORT_EMAIL || process.env.SENDER_EMAIL || "order@jyoti.app",
 }: SendMailArgs) {
   return zepto.sendMail({
     from: { address: fromAddress, name: fromName },
     to: [{ email_address: { address: to, name: to.split("@")[0] } }],
-    reply_to: { address: replyTo },
     subject,
     htmlbody: html,
+    reply_to: [{ address: replyTo }], // NEW
   });
 }
