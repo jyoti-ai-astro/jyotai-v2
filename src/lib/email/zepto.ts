@@ -15,12 +15,10 @@ function normalizeUrl(v?: string) {
 
 const url = normalizeUrl(process.env.ZEPTO_API_URL);
 const zeptoToken =
-  process.env.ZEPTO_API_TOKEN ||
-  process.env.ZEPTO_MAIL_TOKEN ||
-  "";
+  process.env.ZEPTO_API_TOKEN || process.env.ZEPTO_MAIL_TOKEN || "";
 
 if (!zeptoToken || !zeptoToken.startsWith("Zoho-enczapikey ")) {
-  console.warn("⚠️ Invalid Zepto token. Ensure ZEPTO_API_TOKEN starts with 'Zoho-enczapikey '.");
+  console.warn("⚠️ ZEPTO_API_TOKEN missing/invalid.");
 }
 
 export const zepto = new SendMailClient({ url, token: zeptoToken });
@@ -31,7 +29,7 @@ type SendMailArgs = {
   html: string;
   fromAddress?: string;
   fromName?: string;
-  replyTo?: string; // NEW
+  replyTo?: string;
 };
 
 export async function sendZepto({
@@ -45,8 +43,8 @@ export async function sendZepto({
   return zepto.sendMail({
     from: { address: fromAddress, name: fromName },
     to: [{ email_address: { address: to, name: to.split("@")[0] } }],
+    reply_to: { address: replyTo },
     subject,
     htmlbody: html,
-    reply_to: [{ address: replyTo }], // NEW
   });
 }
