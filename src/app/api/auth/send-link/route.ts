@@ -4,69 +4,94 @@ import { rateLimit } from "@/lib/rate-limit";
 import { adminAuth } from "@/lib/firebase-admin";
 import { sendZepto } from "@/lib/email/zepto";
 
-// must run on Node (uses process.env, firebase-admin)
+// Must run on Node (uses firebase-admin + env)
 export const runtime = "nodejs";
+
+function baseUrlFrom(req: NextRequest) {
+  // Use the canonical prod domain you actually serve from.
+  // If Vercel redirects apex -> www, set this to https://www.jyoti.app
+  return process.env.NEXT_PUBLIC_BASE_URL || req.nextUrl.origin;
+}
+
+function validEmail(v: unknown): string | null {
+  const s = String(v || "").trim().toLowerCase();
+  if (!s || !s.includes("@") || !s.includes(".")) return null;
+  return s;
+}
 
 export async function POST(req: NextRequest) {
   try {
-    // --- Rate limit by IP (existing helper)
-    const ip =
-      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-      req.headers.get("x-real-ip") ||
-      "unknown";
-
-    const rate = rateLimit(`send-link:${ip}`, 5, 60_000);
-    if (!rate.ok) {
+    // Simple IP rate limit
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+      || req.headers.get("x-real-ip")
+      || "unknown";
+    const limit = rateLimit(`send-link:${ip}`, 5, 60_000);
+    if (!limit.ok) {
       return NextResponse.json(
         { error: "Too many requests. Please wait a moment." },
         { status: 429 }
       );
     }
 
-    // --- Parse + validate email
     const body = await req.json().catch(() => ({}));
-    const email =
-      typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
-
-    if (!email || !email.includes("@") || !email.includes(".")) {
+    const email = validEmail(body?.email);
+    if (!email) {
       return NextResponse.json({ error: "Valid email required" }, { status: 400 });
     }
 
-    // --- Build magic link that returns to /login on YOUR domain
-    const baseUrl =
-      (process.env.NEXT_PUBLIC_BASE_URL || req.nextUrl.origin).replace(/\/+$/, "");
-
-    const magicLink = await adminAuth.generateSignInWithEmailLink(email, {
-      url: `${baseUrl}/login`,
-      handleCodeInApp: true,
+    // Ensure Auth user exists (verified so they can sign in seamlessly)
+    await adminAuth.getUserByEmail(email).catch(async (e: any) => {
+      if (e?.code === "auth/user-not-found") {
+        await adminAuth.createUser({ email, emailVerified: true });
+        return;
+      }
+      throw e;
     });
 
-    // --- Compose a simple transactional email (from your own domain via Zepto)
+    // Build the Firebase ActionCodeSettings with your canonical base URL
+    const origin = baseUrlFrom(req).replace(/\/+$/, "");
+    const actionCodeSettings = {
+      url: `${origin}/login`, // we finish sign-in on /login
+      handleCodeInApp: true,
+    };
+
+    // 👉 Generate the REAL Firebase email sign-in link
+    const magicLink = await adminAuth.generateSignInWithEmailLink(email, actionCodeSettings);
+
+    // Send via Zepto from order@jyoti.app (with Reply-To to support if set)
+    const support = process.env.SUPPORT_EMAIL || process.env.SENDER_EMAIL || "order@jyoti.app";
     const html = `
-      <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto">
-        <h2 style="margin:0 0 12px 0">Sign in to JyotAI</h2>
-        <p>Click the secure link below to complete sign-in:</p>
-        <p><a href="${magicLink}" target="_blank" rel="noopener">${magicLink}</a></p>
-        <p style="color:#555">If you didn’t request this, you can safely ignore this email.</p>
+      <div style="background:#0B0F14;color:#F7F7F8;padding:24px;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial">
+        <div style="max-width:560px;margin:0 auto;background:#0F1520;border:1px solid #1E293B;border-radius:12px;padding:24px">
+          <h1 style="margin:0 0 12px;font-size:20px;">Your secure sign-in link 🔐</h1>
+          <p style="margin:0 0 16px;opacity:.85">Click the button below on this device to finish signing in.</p>
+          <p style="margin:16px 0">
+            <a href="${magicLink}" style="display:inline-block;padding:12px 18px;border-radius:10px;text-decoration:none;background:#2A9DF4;color:#001018;font-weight:700">Sign in to JyotAI</a>
+          </p>
+          <p style="margin:16px 0;opacity:.7;font-size:12px">If the button doesn’t work, copy & paste this URL into your browser:<br/>
+            <span style="word-break:break-all">${magicLink}</span>
+          </p>
+          <p style="margin-top:16px;opacity:.7;font-size:12px">Need help? Reply to this email or write to <a href="mailto:${support}" style="color:#2A9DF4">${support}</a>.</p>
+        </div>
+        <p style="text-align:center;margin-top:12px;opacity:.6;font-size:12px">© ${new Date().getFullYear()} JyotAI</p>
       </div>
     `.trim();
 
     await sendZepto({
       to: email,
-      subject: "Your JyotAI sign-in link",
+      subject: "Your secure JyotAI sign-in link",
       html,
-      fromName: "JyotAI",
-      // fromAddress is taken from SENDER_EMAIL in sendZepto() by default
+      // fromAddress defaults to SENDER_EMAIL/order@jyoti.app; replyTo to SUPPORT_EMAIL
     });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, message: "Magic link sent" });
   } catch (e) {
     console.error("❌ send-link error:", e);
     return NextResponse.json({ error: "Failed to send magic link" }, { status: 500 });
   }
 }
 
-// Block non-POST (optional)
+// Optional safety
 export async function GET() {
-  return NextResponse.json({ ok: false, error: "Method not allowed" }, { status: 405 });
+  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
 }
