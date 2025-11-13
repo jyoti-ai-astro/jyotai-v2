@@ -41,10 +41,6 @@ export default function LoginPage() {
         window.location.replace("/dashboard");
       } catch (e: any) {
         console.error("magic-link signIn error:", e);
-        // Common reasons:
-        // - URL lost its query params due to a redirect
-        // - Firebase client config doesn't match the project that generated the link
-        // - Link already used or expired
         setErr("The sign-in link was invalid or expired. Please request a new one.");
       }
     })();
@@ -52,7 +48,8 @@ export default function LoginPage() {
 
   async function onSend(e: React.FormEvent) {
     e.preventDefault();
-    setErr(null); setMsg(null);
+    setErr(null);
+    setMsg(null);
 
     const v = email.trim().toLowerCase();
     if (!v || !v.includes("@") || !v.includes(".")) {
@@ -70,11 +67,11 @@ export default function LoginPage() {
       });
       if (!r.ok) throw new Error("Failed to prepare magic link");
 
-      // We still send a client link to improve deliverability in local/dev if needed:
-      const { actionCodeSettings } = await r.json().catch(() => ({ actionCodeSettings: null }));
-      if (actionCodeSettings) {
-        await sendSignInLinkToEmail(auth, v, actionCodeSettings);
-      }
+      const { actionCodeSettings } = await r.json();
+
+      // Send the magic link via Firebase (same project config we later use to verify)
+      await sendSignInLinkToEmail(auth, v, actionCodeSettings);
+
       window.localStorage.setItem("emailForSignIn", v);
       setMsg("Magic link sent! Check your inbox and open the link on this device.");
     } catch (e) {
@@ -88,7 +85,10 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-[#0B0F14] px-4">
       <div className="w-full max-w-2xl border border-[#1E293B] bg-[#0F1520] rounded-xl p-8">
-        <h1 className="text-center text-4xl mb-6" style={{ color: "#F7F7F8", fontFamily: "'Marcellus', serif" }}>
+        <h1
+          className="text-center text-4xl mb-6"
+          style={{ color: "#F7F7F8", fontFamily: "'Marcellus', serif" }}
+        >
           Enter the Sanctum
         </h1>
         <form onSubmit={onSend} className="space-y-4">
@@ -98,7 +98,10 @@ export default function LoginPage() {
             onChange={(e) => {
               const v = e.target.value;
               setEmail(v);
-              window.localStorage.setItem("emailForSignIn", v.trim().toLowerCase());
+              window.localStorage.setItem(
+                "emailForSignIn",
+                v.trim().toLowerCase()
+              );
             }}
             placeholder="you@example.com"
             className="w-full p-3 rounded-md bg-[#131a26] text-white outline-none"
@@ -108,14 +111,26 @@ export default function LoginPage() {
             type="submit"
             disabled={sending}
             className="w-full py-3 font-semibold rounded-md"
-            style={{ background: "#FFC857", color: "#0B0F14", opacity: sending ? 0.7 : 1 }}
+            style={{
+              background: "#FFC857",
+              color: "#0B0F14",
+              opacity: sending ? 0.7 : 1,
+            }}
           >
             {sending ? "Sending…" : "Get Magic Link"}
           </button>
         </form>
 
-        {msg && <p className="text-center mt-4" style={{ color: "#7ef08a" }}>{msg}</p>}
-        {err && <p className="text-center mt-4" style={{ color: "#ff6b6b" }}>{err}</p>}
+        {msg && (
+          <p className="text-center mt-4" style={{ color: "#7ef08a" }}>
+            {msg}
+          </p>
+        )}
+        {err && (
+          <p className="text-center mt-4" style={{ color: "#ff6b6b" }}>
+            {err}
+          </p>
+        )}
       </div>
     </main>
   );
