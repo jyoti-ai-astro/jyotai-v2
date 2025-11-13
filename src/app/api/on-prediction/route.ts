@@ -1,6 +1,7 @@
 // src/app/api/on-prediction/route.ts
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
+import admin from "firebase-admin";
 import { rateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -45,7 +46,11 @@ export async function POST(req: Request) {
         throw new Error("User not found");
       }
       
-      const user = userSnap.data() as { plan?: "standard" | "premium"; credits?: number } | undefined;
+      const user = userSnap.data() as {
+        plan?: "standard" | "premium";
+        credits?: number;
+        premiumUsage?: { period?: string; count?: number };
+      } | undefined;
       if (!user?.plan) {
         throw new Error("Invalid user record");
       }
@@ -61,22 +66,26 @@ export async function POST(req: Request) {
           credits: admin.firestore.FieldValue.increment(-1),
         });
       } else if (user.plan === "premium") {
-        // FIX: Check both month AND year
         const now = new Date();
-        const currentMonth = now.getMonth();
-        const currentYear = now.getFullYear();
-        
-        const predsSnap = await transaction.get(userRef.collection("predictions"));
-        const thisMonth = predsSnap.docs.filter((d) => {
-          const ts = d.data().createdAt;
-          if (!ts) return false;
-          const date = new Date(ts);
-          return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
-        }).length;
-        
-        if (thisMonth >= 20) {
+        const currentPeriod = `${now.getUTCFullYear()}-${String(
+          now.getUTCMonth() + 1
+        ).padStart(2, "0")}`;
+
+        const usage = user.premiumUsage ?? {};
+        const usageCount =
+          usage.period === currentPeriod ? Number(usage.count ?? 0) : 0;
+
+        if (usageCount >= 20) {
           throw new Error("Monthly prediction limit reached");
         }
+
+        transaction.update(userRef, {
+          premiumUsage: {
+            period: currentPeriod,
+            count: usageCount + 1,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+        });
       } else {
         throw new Error("Invalid plan type");
       }

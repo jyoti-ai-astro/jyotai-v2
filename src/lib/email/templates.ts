@@ -1,21 +1,21 @@
 // src/lib/email/templates.ts
 
-export type PlanTier = 'STANDARD' | 'PREMIUM';
+export type PlanTier = "STANDARD" | "PREMIUM";
 
 export interface PredictionEmailOpts {
-  userName: string;
-  predictionId: string;
-  plan: PlanTier;
-  appUrl?: string;        // e.g. https://jyoti.app
-  supportEmail?: string;  // e.g. support@jyoti.app
+  userName: string;        // optional-ish; we’ll fall back inside
+  predictionId: string;    // required
+  plan: PlanTier;          // STANDARD | PREMIUM
+  appUrl?: string;         // e.g. https://jyoti.app
+  supportEmail?: string;   // e.g. support@jyoti.app
 }
 
-const fallbackAppUrl = 'https://jyoti.app';
-const fallbackSupport = 'support@jyoti.app';
+const fallbackAppUrl = (process.env.NEXT_PUBLIC_BASE_URL || "https://jyoti.app").replace(/\/+$/,"");
+const fallbackSupport = process.env.SUPPORT_EMAIL || "support@jyoti.app";
 
 /**
  * HTML body for the "prediction ready / payment success" email.
- * Keep markup simple for broad client support.
+ * Markup kept simple for broad client support.
  */
 export function predictionEmailHTML({
   userName,
@@ -24,8 +24,9 @@ export function predictionEmailHTML({
   appUrl = fallbackAppUrl,
   supportEmail = fallbackSupport,
 }: PredictionEmailOpts): string {
+  const safeName = safePersonName(userName); // <- greeting fallback lives here
   const predictionLink = `${appUrl}/dashboard/predictions/${encodeURIComponent(predictionId)}`;
-  const planLabel = plan === 'PREMIUM' ? 'Premium' : 'Standard';
+  const planLabel = plan === "PREMIUM" ? "Premium" : "Standard";
 
   return `
 <!doctype html>
@@ -47,12 +48,13 @@ export function predictionEmailHTML({
     .kv{display:flex;justify-content:space-between;margin:6px 0}
     .key{color:#A7B0BA}
     .val{color:#F7F7F8;font-weight:600}
+    a{color:#2A9DF4}
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="card">
-      <h1>Hi ${escapeHtml(userName)}, your prediction is ready ✨</h1>
+      <h1>Hi ${escapeHtml(safeName)}, your prediction is ready ✨</h1>
       <h2>Plan: ${planLabel}</h2>
 
       <p>We’ve generated your prediction. You can view it securely at the link below:</p>
@@ -64,12 +66,12 @@ export function predictionEmailHTML({
       <div class="hr"></div>
 
       <div class="kvs">
-        <div class="kv"><span class="key">Prediction ID</span><span class="val">${predictionId}</span></div>
-        <div class="kv"><span class="key">Dashboard</span><span class="val"><a href="${appUrl}" style="color:#2A9DF4">jyoti.app</a></span></div>
+        <div class="kv"><span class="key">Prediction ID</span><span class="val">${escapeHtml(predictionId)}</span></div>
+        <div class="kv"><span class="key">Dashboard</span><span class="val"><a href="${appUrl}" target="_blank" rel="noopener">${new URL(appUrl).hostname}</a></span></div>
       </div>
 
       <p class="muted" style="margin-top:16px;">
-        Need help? Reply to this email or write to <a href="mailto:${supportEmail}" style="color:#2A9DF4">${supportEmail}</a>.
+        Need help? Reply to this email or write to <a href="mailto:${supportEmail}">${supportEmail}</a>.
       </p>
     </div>
 
@@ -82,12 +84,19 @@ export function predictionEmailHTML({
   `.trim();
 }
 
+/** Greeting fallback — keeps things friendly even with missing names. */
+function safePersonName(name: string): string {
+  const n = (name || "").trim();
+  if (!n) return "there";
+  return n.length > 80 ? n.slice(0, 77) + "..." : n;
+}
+
 /** Super-light HTML escaper to avoid broken markup with user inputs. */
 function escapeHtml(str: string): string {
   return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }

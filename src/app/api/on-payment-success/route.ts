@@ -31,7 +31,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "userEmail is required" }, { status: 400 });
     }
 
-    // --- 1) Ensure Auth user exists
+    // 1) Ensure Auth user exists
     const userRecord =
       (await adminAuth.getUserByEmail(email).catch(async (e: any) => {
         if (e?.code === "auth/user-not-found") {
@@ -46,17 +46,16 @@ export async function POST(req: Request) {
 
     const uid = userRecord.uid;
 
-    // --- 2) Ensure base Firestore doc
+    // 2) Ensure base Firestore user doc
     const userRef = adminDb.collection("users").doc(uid);
-    const userSnap = await userRef.get();
-
-    if (!userSnap.exists) {
+    const snap = await userRef.get();
+    if (!snap.exists) {
       await userRef.set({
         email,
         name: name || "",
         plan: "standard",
         createdAt: new Date().toISOString(),
-        credits: 3,
+        credits: 3, // standard gets 3 lifetime
         referralCode: randomBytes(4).toString("hex").toUpperCase(),
       });
     }
@@ -64,7 +63,7 @@ export async function POST(req: Request) {
     const userData = (await userRef.get()).data() as AnyObject;
     const plan: "standard" | "premium" = (userData?.plan as any) || "standard";
 
-    // --- 3) LIMIT LOGIC
+    // 3) Enforce limits BEFORE creating prediction
     if (plan === "standard") {
       const remaining = Number(userData?.credits ?? 0);
       if (remaining <= 0) {
@@ -74,17 +73,13 @@ export async function POST(req: Request) {
         );
       }
     } else {
-      // Premium monthly quota kept in users.quota
       const nowMonth = yyyymm();
-      const quota: AnyObject = userData?.quota || { month: nowMonth, monthly_limit: 20, used: 0 };
-
-      // If month rolled over, reset
+      const quota = userData?.quota || { month: nowMonth, monthly_limit: 20, used: 0 };
       if (quota.month !== nowMonth) {
         quota.month = nowMonth;
         quota.used = 0;
         quota.monthly_limit = 20;
       }
-
       if (Number(quota.used) >= Number(quota.monthly_limit)) {
         return NextResponse.json(
           { error: "Monthly prediction limit reached for Premium plan." },
@@ -93,9 +88,9 @@ export async function POST(req: Request) {
       }
     }
 
-    // --- 4) Save prediction (subcollection)
-    const predId = `pred_${randomBytes(12).toString("hex")}`;
-    await userRef.collection("predictions").doc(predId).set({
+    // 4) Create prediction FIRST and capture its ID
+    const predictionId = `pred_${randomBytes(12).toString("hex")}`;
+    await userRef.collection("predictions").doc(predictionId).set({
       query,
       prediction,
       dob,
@@ -104,7 +99,7 @@ export async function POST(req: Request) {
       createdAt: new Date().toISOString(),
     });
 
-    // --- 5) Update counters
+    // 5) Update counters AFTER successful write
     if (plan === "standard") {
       await userRef.update({
         credits: admin.firestore.FieldValue.increment(-1),
@@ -112,13 +107,6 @@ export async function POST(req: Request) {
       });
     } else {
       const nowMonth = yyyymm();
-      await userRef.set(
-        {
-          quota: admin.firestore.FieldValue.arrayRemove(null), // no-op to force merge type
-        },
-        { merge: true }
-      );
-      // read latest, then set merged quota
       const latest = (await userRef.get()).data() as AnyObject;
       const q = latest?.quota || { month: nowMonth, monthly_limit: 20, used: 0 };
       if (q.month !== nowMonth) {
@@ -127,24 +115,30 @@ export async function POST(req: Request) {
         q.monthly_limit = 20;
       }
       q.used = Number(q.used || 0) + 1;
-      await userRef.set({ quota: q }, { merge: true });
+      await userRef.set({ quota: q, lastPredictionAt: new Date().toISOString() }, { merge: true });
     }
 
-    // --- 6) Magic link (to /login)
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://jyotai-v2.vercel.app";
+    // 6) Generate a Firebase Magic Link that lands on /login (hosted on your own domain)
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://jyoti.app";
     const magicLink = await adminAuth.generateSignInWithEmailLink(email, {
       url: `${baseUrl}/login`,
       handleCodeInApp: true,
     });
 
-    // --- 7) Email via ZeptoMail
+    // 7) Send transactional email via ZeptoMail FROM your domain
     const html = predictionEmailHTML({
-      name,
-      link: magicLink,
-      query,
-      dob,
-      prediction,
-    });
+      userName: name || "",
+      predictionId,
+      plan: plan === "premium" ? "PREMIUM" : "STANDARD",
+      appUrl: baseUrl,
+      supportEmail: process.env.SUPPORT_EMAIL || "support@jyoti.app",
+      // We include the magic link inline as a “secondary” path (users can log in if needed)
+      // The main CTA goes to /dashboard/predictions/{id}.
+    }).replace(
+      "</div>\n\n      <p class=\"muted\"",
+      // Add an extra paragraph with the magic link for convenience/login issues
+      `<p style="margin:10px 0 0 0;">Or sign in first with this secure link: <a href="${magicLink}" style="color:#2A9DF4" target="_blank" rel="noopener">Magic Sign-In</a></p>\n\n      <p class="muted"`
+    );
 
     await sendZepto({
       to: email,
@@ -153,7 +147,7 @@ export async function POST(req: Request) {
       fromName: "Brahmin GPT · JyotAI",
     });
 
-    return NextResponse.json({ status: "✅ Email sent successfully!" });
+    return NextResponse.json({ ok: true, predictionId });
   } catch (err) {
     console.error("🔥 Error in on-payment-success:", (err as any)?.stack || err);
     return NextResponse.json({ error: "Failed to process payment." }, { status: 500 });

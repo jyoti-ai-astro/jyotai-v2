@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 
 // 5 days
 const EXPIRES_IN_MS = 5 * 24 * 60 * 60 * 1000;
-const COOKIE_NAME = "__session";
+const COOKIE_NAME = "session";
 
 export async function POST(req: NextRequest) {
   try {

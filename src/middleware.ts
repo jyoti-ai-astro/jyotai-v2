@@ -1,50 +1,50 @@
-import { NextRequest, NextResponse } from 'next/server';
+// src/middleware.ts
+import { NextRequest, NextResponse } from "next/server";
 
-/**
- * Edge Runtime-safe middleware.
- * - Only runs on `/admin/*` routes
- * - Checks for `session` cookie (standardized)
- * - Delegates verification to `/api/auth/verify` (Node runtime)
- */
 export async function middleware(req: NextRequest) {
-  const { pathname } = req.nextUrl;
+  const url = new URL(req.url);
+  const host = req.headers.get("host") || "";
+  const pathname = url.pathname;
 
-  if (!pathname.startsWith("/admin")) {
-    return NextResponse.next();
+  // --- 1) Canonical host: force www on the apex domain
+  if (host === "jyoti.app") {
+    url.host = "www.jyoti.app";
+    return NextResponse.redirect(url, 308);
   }
 
-  const sessionCookie = req.cookies.get("session")?.value;
-  if (!sessionCookie) {
-    return NextResponse.redirect(new URL("/login", req.url));
-  }
-
-  try {
-    const verifyURL = new URL("/api/auth/verify", req.url);
-    const response = await fetch(verifyURL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        cookie: req.headers.get("cookie") || "",
-      },
-      body: JSON.stringify({}),
-    });
-
-    if (!response.ok) {
-      return NextResponse.redirect(new URL("/login", req.url));
+  // --- 2) Admin guard (uses the same cookie name set in /api/auth/login)
+  if (pathname.startsWith("/admin")) {
+    const session = req.cookies.get("session")?.value; // <-- align with /api/auth/login
+    if (!session) {
+      const r = NextResponse.redirect(new URL("/login", req.url));
+      r.cookies.delete("session");
+      return r;
     }
 
-    const result = await response.json();
-    if (!result.ok || result.isAdmin !== true) {
-      return NextResponse.redirect(new URL("/login", req.url));
-    }
+    try {
+      const verifyURL = new URL("/api/auth/verify", req.url);
+      const resp = await fetch(verifyURL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionCookie: session }),
+      });
 
-    return NextResponse.next();
-  } catch (err) {
-    console.error("🔥 Middleware error:", err);
-    return NextResponse.redirect(new URL("/login", req.url));
+      if (!resp.ok) {
+        const r = NextResponse.redirect(new URL("/login", req.url));
+        r.cookies.delete("session");
+        return r;
+      }
+    } catch {
+      const r = NextResponse.redirect(new URL("/login", req.url));
+      r.cookies.delete("session");
+      return r;
+    }
   }
+
+  return NextResponse.next();
 }
 
+// Apply to all routes (for host redirect), but skip static assets/_next
 export const config = {
-  matcher: ["/admin/:path*"],
+  matcher: ["/((?!_next|.*\\..*).*)"],
 };
