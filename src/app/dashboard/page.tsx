@@ -1,16 +1,12 @@
 // src/app/dashboard/page.tsx
 "use client";
 
-// ✅ Next.js flags for client-only, dynamic rendering
-//export const dynamic = "force-dynamic";
-//export const revalidate = 0;
-
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
 import { SuccessMessage } from "@/components/ui/ErrorMessage";
-import { useUser } from "@/lib/hooks/useUser";
+import { useUser } from "@/hooks/useUser"; // ✅ new hook path
 import Loading from "@/components/ui/loading";
 import UpsellPrompt from "@/components/ui/UpsellPrompt";
 import DownloadPdfButton from "@/components/DownloadPdfButton";
@@ -25,7 +21,7 @@ import {
   doc,
   getDoc,
 } from "firebase/firestore";
-import { app } from "@/lib/firebase-client";
+import { app } from "@/lib/firebase"; // ✅ use the unified firebase client
 
 interface Prediction {
   id: string;
@@ -48,14 +44,18 @@ const tips = [
   "🔮 Be open to surprises. The universe is playful.",
 ];
 
+type Plan = "free" | "premium";
+
 export default function DashboardPage() {
   const { user, loading } = useUser();
+
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [fetching, setFetching] = useState(true);
 
   const [tip, setTip] = useState("");
   const [luck, setLuck] = useState(0);
 
+  const [plan, setPlan] = useState<Plan>("free");
   const [referralCode, setReferralCode] = useState("");
   const [referredBy, setReferredBy] = useState("");
   const [copySuccess, setCopySuccess] = useState(false);
@@ -72,19 +72,29 @@ export default function DashboardPage() {
 
         // Fetch user profile
         const userSnap = await getDoc(doc(db, "users", user.uid));
-        const u = userSnap.data() || {};
+        const u = (userSnap.data() || {}) as {
+          referralCode?: string;
+          referredBy?: string;
+          plan?: Plan;
+        };
+
         setReferralCode(u.referralCode || "");
         setReferredBy(u.referredBy || "");
+        setPlan(u.plan || "free");
 
         // Fetch latest predictions
-        const snap = await getDocs(collection(db, `users/${user.uid}/predictions`));
+        const snap = await getDocs(
+          collection(db, `users/${user.uid}/predictions`)
+        );
         const list = snap.docs.map((d) => ({
           id: d.id,
           ...(d.data() as Omit<Prediction, "id">),
         })) as Prediction[];
 
         // Sort by newest first
-        list.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+        list.sort((a, b) =>
+          (b.createdAt || "").localeCompare(a.createdAt || "")
+        );
         setPredictions(list);
       } catch (e) {
         console.error("Dashboard fetch failed:", e);
@@ -95,18 +105,20 @@ export default function DashboardPage() {
     fetchData();
   }, [user]);
 
+  // Tip of the day for premium users
   useEffect(() => {
     if (!user) return;
-    if (user.plan === "premium") {
+    if (plan === "premium") {
       const dailyTip = tips[new Date().getDate() % tips.length];
       setTip(dailyTip);
       setLuck(Math.floor(Math.random() * 10) + 1);
     }
-  }, [user]);
+  }, [user, plan]);
 
   const referralLink = useMemo(() => {
     if (!referralCode) return "";
-    const base = process.env.NEXT_PUBLIC_BASE_URL || "https://jyoti.app";
+    const base =
+      process.env.NEXT_PUBLIC_BASE_URL || "https://www.jyoti.app";
     return `${base}/?ref=${encodeURIComponent(referralCode)}`;
   }, [referralCode]);
 
@@ -124,17 +136,18 @@ export default function DashboardPage() {
   if (loading) return <Loading />;
 
   if (!user) {
+    // If Firebase auth says no user, we really are logged out
     return (
       <div className="flex flex-col items-center justify-center min-h-[70vh] text-white">
         <h2 className="text-xl font-semibold">You are not logged in.</h2>
-        <Link href="/" className="text-celestial-gold mt-4">
+        <Link href="/login" className="text-celestial-gold mt-4">
           Return to the portal
         </Link>
       </div>
     );
   }
 
-  const isPremium = user.plan === "premium";
+  const isPremium = plan === "premium";
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-12">
@@ -147,7 +160,10 @@ export default function DashboardPage() {
 
       <div className="flex items-center justify-between gap-4 mb-4">
         <h1 className="text-3xl text-white font-bold">📜 Your Predictions</h1>
-        <Link href="/dashboard/predictions" className="text-yellow-300 underline hover:text-white">
+        <Link
+          href="/dashboard/predictions"
+          className="text-yellow-300 underline hover:text-white"
+        >
           View all →
         </Link>
       </div>
@@ -169,7 +185,10 @@ export default function DashboardPage() {
               🌟 Your Luck Meter: <strong>{luck}/10</strong>
             </p>
             <div className="w-full bg-yellow-900 h-2 rounded-full overflow-hidden mt-1">
-              <div className="bg-yellow-400 h-2" style={{ width: `${luck * 10}%` }} />
+              <div
+                className="bg-yellow-400 h-2"
+                style={{ width: `${luck * 10}%` }}
+              />
             </div>
           </div>
         </div>
@@ -179,9 +198,13 @@ export default function DashboardPage() {
         <div className="bg-green-900/10 border border-green-500 text-white p-4 rounded-xl mb-6">
           <h2 className="text-xl font-semibold text-green-400">📨 Invite Friends</h2>
           <p>
-            Your referral code: <code className="text-green-300">{referralCode}</code>
+            Your referral code:{" "}
+            <code className="text-green-300">{referralCode}</code>
           </p>
-          <p>They’ll get 1 free prediction. You’ll earn bonus credits when they pay.</p>
+          <p>
+            They’ll get 1 free prediction. You’ll earn bonus credits when they
+            pay.
+          </p>
           <div className="flex gap-4 mt-3 flex-wrap">
             <button
               onClick={handleCopy}
@@ -190,7 +213,9 @@ export default function DashboardPage() {
               Copy Referral Link
             </button>
             <a
-              href={`https://wa.me/?text=${encodeURIComponent(`🔮 Join JyotAI: ${referralLink}`)}`}
+              href={`https://wa.me/?text=${encodeURIComponent(
+                `🔮 Join JyotAI: ${referralLink}`
+              )}`}
               target="_blank"
               rel="noreferrer"
               className="bg-green-700 text-white px-4 py-2 rounded"
@@ -203,7 +228,8 @@ export default function DashboardPage() {
 
       {referredBy && (
         <div className="mb-6 bg-blue-900/30 border border-blue-400 p-4 rounded-lg text-blue-300">
-          🎁 You were referred by <strong>{referredBy}</strong>. Spread the divine karma forward!
+          🎁 You were referred by <strong>{referredBy}</strong>. Spread the
+          divine karma forward!
         </div>
       )}
 
