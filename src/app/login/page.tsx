@@ -9,39 +9,67 @@ import {
   sendSignInLinkToEmail,
 } from "firebase/auth";
 
+type Status = "idle" | "sending" | "sent";
+
+function getActionCodeSettings() {
+  // Fallback for SSR / safety
+  const base =
+    typeof window === "undefined"
+      ? process.env.NEXT_PUBLIC_BASE_URL || "https://www.jyoti.app"
+      : window.location.origin;
+
+  return {
+    // The link will always bounce back to /login on the same host
+    url: `${base}/login`,
+    handleCodeInApp: true,
+  };
+}
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
-  const [sending, setSending] = useState(false);
+  const [status, setStatus] = useState<Status>("idle");
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  // complete sign-in if the URL contains oobCode/mode/apiKey
+  // Complete sign-in if this page is opened via magic link
   useEffect(() => {
     (async () => {
-      const href = window.location.href;
-      if (!isSignInWithEmailLink(auth, href)) return;
-
-      let saved = window.localStorage.getItem("emailForSignIn") || "";
-      if (!saved) {
-        // cross-device fallback
-        const ask = window.prompt("Please confirm your email to complete sign-in") || "";
-        saved = ask.trim().toLowerCase();
-      }
-      if (!saved) return;
-
       try {
+        const href = window.location.href;
+        if (!isSignInWithEmailLink(auth, href)) return;
+
+        let saved = window.localStorage.getItem("emailForSignIn") || "";
+        if (!saved) {
+          const ask =
+            window.prompt(
+              "Please confirm your email to complete sign-in"
+            ) || "";
+          saved = ask.trim().toLowerCase();
+        }
+        if (!saved) return;
+
         const cred = await signInWithEmailLink(auth, saved, href);
         window.localStorage.removeItem("emailForSignIn");
+
         const idToken = await cred.user.getIdToken();
+
         const res = await fetch("/api/auth/login", {
           method: "POST",
           headers: { Authorization: `Bearer ${idToken}` },
         });
-        if (!res.ok) throw new Error("Session creation failed");
+
+        if (!res.ok) {
+          console.error("Session creation failed", await res.text());
+          throw new Error("Session creation failed");
+        }
+
+        // Success: go to dashboard
         window.location.replace("/dashboard");
       } catch (e: any) {
         console.error("magic-link signIn error:", e);
-        setErr("The sign-in link was invalid or expired. Please request a new one.");
+        setErr(
+          "The sign-in link was invalid or expired. Please request a new one."
+        );
       }
     })();
   }, []);
@@ -58,29 +86,33 @@ export default function LoginPage() {
     }
 
     try {
-      setSending(true);
-      // Ask our server for the correct redirect origin (keeps host in sync)
-      const r = await fetch("/api/auth/send-link", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: v }),
-      });
-      if (!r.ok) throw new Error("Failed to prepare magic link");
+      setStatus("sending");
 
-      const { actionCodeSettings } = await r.json();
+      // Persist email for later completion
+      window.localStorage.setItem("emailForSignIn", v);
 
-      // Send the magic link via Firebase (same project config we later use to verify)
+      const actionCodeSettings = getActionCodeSettings();
+
       await sendSignInLinkToEmail(auth, v, actionCodeSettings);
 
-      window.localStorage.setItem("emailForSignIn", v);
-      setMsg("Magic link sent! Check your inbox and open the link on this device.");
-    } catch (e) {
-      console.error(e);
-      setErr("Could not send magic link. Please try again.");
-    } finally {
-      setSending(false);
+      setStatus("sent");
+      setMsg(
+        "Magic link sent! Check your inbox and open the link on this device."
+      );
+    } catch (e: any) {
+      console.error("sendSignInLinkToEmail error:", e);
+      // Show a bit more detail if Firebase gives a message
+      const firebaseMessage =
+        e?.message?.toString().replace("Firebase: ", "") || "";
+      setErr(
+        firebaseMessage ||
+          "Could not send magic link. Please try again after a moment."
+      );
+      setStatus("idle");
     }
   }
+
+  const sending = status === "sending";
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-[#0B0F14] px-4">
