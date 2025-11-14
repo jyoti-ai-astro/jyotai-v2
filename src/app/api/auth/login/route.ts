@@ -6,19 +6,30 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
-    const h = req.headers.get("authorization") || req.headers.get("Authorization");
+    const h =
+      req.headers.get("authorization") || req.headers.get("Authorization");
     if (!h?.startsWith("Bearer ")) {
-      return NextResponse.json({ status: "error", message: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { status: "error", message: "Unauthorized" },
+        { status: 401 }
+      );
     }
 
     const idToken = h.slice("Bearer ".length).trim();
-    const expiresIn = 14 * 24 * 60 * 60 * 1000; // 14 days
-    const sessionCookie = await adminAuth.createSessionCookie(idToken, { expiresIn });
+
+    // 14 days in ms
+    const expiresIn = 14 * 24 * 60 * 60 * 1000;
+
+    // Create a Firebase session cookie from the ID token
+    const sessionCookie = await adminAuth.createSessionCookie(idToken, {
+      expiresIn,
+    });
 
     const res = NextResponse.json({ status: "success" });
-    // Use __session so it’s readable by middleware if you later protect routes
+
+    // IMPORTANT: cookie name must match what middleware + /api/auth/verify expect
     res.cookies.set({
-      name: "__session",
+      name: "session", // <--- unified name
       value: sessionCookie,
       httpOnly: true,
       secure: true,
@@ -26,9 +37,13 @@ export async function POST(req: Request) {
       sameSite: "lax",
       maxAge: expiresIn / 1000,
     });
+
     return res;
   } catch (error) {
     console.error("Session login error:", error);
-    return NextResponse.json({ status: "error", message: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json(
+      { status: "error", message: "Internal Server Error" },
+      { status: 500 }
+    );
   }
 }
