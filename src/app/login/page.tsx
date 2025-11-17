@@ -7,9 +7,13 @@ import {
   isSignInWithEmailLink,
   signInWithEmailLink,
   sendSignInLinkToEmail,
+  GoogleAuthProvider,
+  FacebookAuthProvider,
+  signInWithPopup,
 } from "firebase/auth";
 
 type Status = "idle" | "sending" | "sent";
+type SocialLoading = "none" | "google" | "facebook";
 
 function getActionCodeSettings() {
   // Fallback for SSR / safety
@@ -28,6 +32,7 @@ function getActionCodeSettings() {
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<Status>("idle");
+  const [socialLoading, setSocialLoading] = useState<SocialLoading>("none");
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -74,6 +79,45 @@ export default function LoginPage() {
     })();
   }, []);
 
+  async function socialSignIn(provider: "google" | "facebook") {
+    setErr(null);
+    setMsg(null);
+
+    try {
+      setSocialLoading(provider);
+
+      const firebaseProvider =
+        provider === "google"
+          ? new GoogleAuthProvider()
+          : new FacebookAuthProvider();
+
+      const cred = await signInWithPopup(auth, firebaseProvider);
+      const idToken = await cred.user.getIdToken();
+
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+
+      if (!res.ok) {
+        console.error("Session creation failed", await res.text());
+        throw new Error("Session creation failed");
+      }
+
+      window.location.replace("/dashboard");
+    } catch (e: any) {
+      console.error(`${provider} sign-in error:`, e);
+      const firebaseMessage =
+        e?.message?.toString().replace("Firebase: ", "") || "";
+      setErr(
+        firebaseMessage ||
+          `Could not sign in with ${provider === "google" ? "Google" : "Facebook"}. Please try again.`
+      );
+    } finally {
+      setSocialLoading("none");
+    }
+  }
+
   async function onSend(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
@@ -101,7 +145,6 @@ export default function LoginPage() {
       );
     } catch (e: any) {
       console.error("sendSignInLinkToEmail error:", e);
-      // Show a bit more detail if Firebase gives a message
       const firebaseMessage =
         e?.message?.toString().replace("Firebase: ", "") || "";
       setErr(
@@ -113,16 +156,54 @@ export default function LoginPage() {
   }
 
   const sending = status === "sending";
+  const googleBusy = socialLoading === "google";
+  const facebookBusy = socialLoading === "facebook";
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-[#0B0F14] px-4">
       <div className="w-full max-w-2xl border border-[#1E293B] bg-[#0F1520] rounded-xl p-8">
         <h1
-          className="text-center text-4xl mb-6"
+          className="text-center text-4xl mb-2"
           style={{ color: "#F7F7F8", fontFamily: "'Marcellus', serif" }}
         >
           Enter the Sanctum
         </h1>
+        <p className="text-center mb-8 text-sm text-slate-300">
+          Sign in with Google or Facebook for instant access, or continue with
+          email.
+        </p>
+
+        {/* Social login buttons */}
+        <div className="space-y-3 mb-8">
+          <button
+            type="button"
+            onClick={() => socialSignIn("google")}
+            disabled={googleBusy || facebookBusy || sending}
+            className="w-full py-3 font-semibold rounded-md flex items-center justify-center gap-2 bg-white text-[#0B0F14]"
+          >
+            {googleBusy ? "Connecting to Google…" : "Continue with Google"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => socialSignIn("facebook")}
+            disabled={googleBusy || facebookBusy || sending}
+            className="w-full py-3 font-semibold rounded-md flex items-center justify-center gap-2 bg-[#1877F2] text-white"
+          >
+            {facebookBusy ? "Connecting to Facebook…" : "Continue with Facebook"}
+          </button>
+        </div>
+
+        {/* Divider */}
+        <div className="flex items-center my-6">
+          <div className="flex-1 h-px bg-slate-700" />
+          <span className="px-3 text-xs uppercase tracking-wide text-slate-400">
+            or continue with email
+          </span>
+          <div className="flex-1 h-px bg-slate-700" />
+        </div>
+
+        {/* Email magic-link form */}
         <form onSubmit={onSend} className="space-y-4">
           <input
             type="email"
@@ -130,10 +211,12 @@ export default function LoginPage() {
             onChange={(e) => {
               const v = e.target.value;
               setEmail(v);
-              window.localStorage.setItem(
-                "emailForSignIn",
-                v.trim().toLowerCase()
-              );
+              if (typeof window !== "undefined") {
+                window.localStorage.setItem(
+                  "emailForSignIn",
+                  v.trim().toLowerCase()
+                );
+              }
             }}
             placeholder="you@example.com"
             className="w-full p-3 rounded-md bg-[#131a26] text-white outline-none"
@@ -141,7 +224,7 @@ export default function LoginPage() {
           />
           <button
             type="submit"
-            disabled={sending}
+            disabled={sending || googleBusy || facebookBusy}
             className="w-full py-3 font-semibold rounded-md"
             style={{
               background: "#FFC857",
